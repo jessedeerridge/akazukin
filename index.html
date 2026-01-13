@@ -1,13 +1,4 @@
 
-
-
-
-
-
-
-
-
-
 <!DOCTYPE html>   
 <html lang="ja">
 <head>
@@ -390,47 +381,6 @@
   }
   .wolf-pick-card img{width:100%;height:100%;object-fit:cover;display:block;}
 
-  .score-stop-overlay{
-    position:fixed;
-    inset:0;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:18px;
-    z-index:20020;
-    pointer-events:none;
-  }
-  .score-stop-overlay.hidden{display:none;}
-  .score-stop-card{
-    width:160px;
-    height:240px;
-    border-radius:14px;
-    overflow:hidden;
-    box-shadow:0 18px 40px rgba(0,0,0,.25);
-    animation:scoreStopZoom 2s ease-out forwards;
-    animation-delay: var(--score-stop-delay, 0s);
-    background:#fff;
-    transform-origin:center;
-  }
-  .score-stop-card-inner{
-    width:100%;
-    height:100%;
-    animation:scoreStopShake .6s ease-in-out infinite;
-    animation-delay: calc(2s + var(--score-stop-delay, 0s));
-  }
-  .score-stop-card img{width:100%;height:100%;object-fit:cover;display:block;}
-  @keyframes scoreStopZoom{
-    0%{transform:scale(0.6);}
-    100%{transform:scale(1);}
-  }
-  @keyframes scoreStopShake{
-    0%{transform:translateY(0) rotate(0deg);}
-    25%{transform:translateY(-2px) rotate(-2deg);}
-    50%{transform:translateY(0) rotate(2deg);}
-    75%{transform:translateY(2px) rotate(-1deg);}
-    100%{transform:translateY(0) rotate(0deg);}
-  }
-
   :root{
     --pt-chip: 14px;
     --pt-heart-scale: 1.3;
@@ -612,8 +562,6 @@
 <button id="helpBtn" class="help-btn" title="正体カード一覧">？</button>
 <button id="decideBtn" class="decide-btn">決定</button>
 
-<div id="scoreStopOverlay" class="score-stop-overlay hidden"></div>
-
 <div id="helpBackdrop" class="help-pop-backdrop hidden">
   <div class="help-pop" role="dialog" aria-modal="true" aria-label="正体カード一覧">
     <div class="help-pop-header">
@@ -708,7 +656,6 @@ const btnHelpClose = document.getElementById('btnHelpClose');
 const helpBody = document.getElementById('helpBody');
 
 const decideBtn = document.getElementById('decideBtn');
-const scoreStopOverlay = document.getElementById('scoreStopOverlay');
 
 const SLEEP_FRONT = 'sleepomote.jpg';
 const SLEEP_BACK  = 'sleepura.jpg';
@@ -889,26 +836,6 @@ function applyIntendedDeltasToPoints(pointsObj, intendedDeltas){
   return { newPoints: cur, appliedDeltas: applied };
 }
 
-function pickScoreStopPlayerIds(pointsObj){
-  return Object.entries(pointsObj || {})
-    .filter(([, pts]) => Number(pts || 0) >= 10)
-    .map(([pid]) => pid);
-}
-
-async function ensureScoreStopIfNeeded(pointsObj){
-  const playerIds = pickScoreStopPlayerIds(pointsObj);
-  if (!playerIds.length) return false;
-  if (!state.roomCode) return true;
-
-  const stopRef = ref(db, `rooms/${state.roomCode}/roundCycle/scoreStop`);
-  const tx = await runTransaction(stopRef, (cur) => cur ? cur : {
-    playerIds,
-    triggeredAt: Date.now()
-  });
-
-  return !!(tx.snapshot.val()?.playerIds || playerIds.length);
-}
-
 /* =========================================================
    ★ NEW：アニメ後に「全カード→マイナス1人」集約し、配り直しへ
    ========================================================= */
@@ -923,21 +850,11 @@ async function redistributeAllCardsToNegativeOne_AfterAnimations(){
   const key = String(wr.resolvedAt || '');
   if (!key) return;
   if (roundRedistributeHandledKey === key) return;
-  if (state.room?.roundCycle?.scoreStop?.playerIds?.length){
-    roundRedistributeHandledKey = key;
-    resetWolfRevealState();
-    return;
-  }
 
   const roomSnap0 = await get(ref(db, `rooms/${state.roomCode}`));
   const room0 = roomSnap0.val() || {};
   const wolfResult0 = room0.wolfResult || {};
   if (!wolfResult0?.computed) return;
-  if (room0?.roundCycle?.scoreStop?.playerIds?.length){
-    roundRedistributeHandledKey = key;
-    resetWolfRevealState();
-    return;
-  }
 
   const loserId = pickMostNegativePlayerId(wolfResult0.appliedDeltas || wolfResult0.intendedDeltas || wolfResult0.deltas || {});
   if (!loserId) return;
@@ -979,26 +896,14 @@ async function redistributeAllCardsToNegativeOne_AfterAnimations(){
   const applyLockRef = ref(db, `rooms/${state.roomCode}/wolfResult/pointsAppliedAt`);
   const applyLock = await runTransaction(applyLockRef, (cur) => cur ? cur : Date.now());
 
-  let finalPoints = null;
   if (applyLock.committed) {
     const { newPoints, appliedDeltas } = applyIntendedDeltasToPoints(pointsNow, intended);
     await update(ref(db, base), {
       points: newPoints,
       "wolfResult/appliedDeltas": appliedDeltas
     });
-    finalPoints = newPoints;
-  } else {
-    const ptsSnap = await get(ref(db, `rooms/${state.roomCode}/points`));
-    finalPoints = ptsSnap.val() || pointsNow;
   }
-
-  const shouldStop = await ensureScoreStopIfNeeded(finalPoints || pointsNow);
-  if (shouldStop){
-    roundRedistributeHandledKey = key;
-    resetWolfRevealState();
-    return;
-  }
-  await sleepFor(1500);
+await sleepFor(1500);
   await update(ref(db, base), {
     roundCycle: {
       token,
@@ -1619,51 +1524,6 @@ function clearWolfOverlay(){
   }
 }
 
-function getScoreStopPlayerIds(){
-  const playerIds = state.room?.roundCycle?.scoreStop?.playerIds || [];
-  return Array.isArray(playerIds) ? playerIds : Object.keys(playerIds || {});
-}
-
-function getIdentityCardForPlayerId(pid){
-  const cards = state.hands?.[pid]?.cards || [];
-  if (!Array.isArray(cards) || !cards.length) return null;
-  return cards[0] || null;
-}
-
-function renderScoreStopOverlay(){
-  if (!scoreStopOverlay) return;
-  const ids = getScoreStopPlayerIds();
-
-  if (!ids.length){
-    scoreStopOverlay.classList.add('hidden');
-    scoreStopOverlay.innerHTML = '';
-    return;
-  }
-
-  scoreStopOverlay.classList.remove('hidden');
-  scoreStopOverlay.innerHTML = '';
-
-  ids.forEach((pid, index) => {
-    const card = getIdentityCardForPlayerId(pid);
-    if (!card) return;
-    const el = document.createElement('div');
-    el.className = 'score-stop-card';
-    el.style.setProperty('--score-stop-delay', `${index * 0.08}s`);
-    el.innerHTML = `<div class="score-stop-card-inner"><img src="${card.img}" alt="${card.name || 'identity'}"></div>`;
-    scoreStopOverlay.appendChild(el);
-  });
-
-  if (!scoreStopOverlay.children.length){
-    scoreStopOverlay.classList.add('hidden');
-  }
-}
-
-function resetWolfRevealState(){
-  wolfAnimHandledChosenId = null;
-  clearWolfOverlay();
-  playerCircle.classList.remove('wolf-reveal');
-}
-
 const WOLF_PICK_BASE_W = 43;
 const WOLF_PICK_BASE_H = 64;
 
@@ -1690,8 +1550,6 @@ function computeUniformScaleToMatch(rect){
 async function runWolfPickAnimationIfNeeded(){
   const chosenId = state.room?.wolfChoice?.chosenId;
   if (!chosenId) return;
-
-  if (getScoreStopPlayerIds().length) return;
 
   if (wolfAnimHandledChosenId === chosenId) return;
 
@@ -1866,7 +1724,6 @@ function renderHands(){
   renderMyHand();
   if (latestPlayers.length) renderPlayerCircle(latestPlayers);
   renderDecideBtn();
-  renderScoreStopOverlay();
 
   runWolfPickAnimationIfNeeded();
 }
