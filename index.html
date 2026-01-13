@@ -1,3 +1,13 @@
+
+
+
+
+
+
+
+
+
+
 <!DOCTYPE html>   
 <html lang="ja">
 <head>
@@ -497,6 +507,14 @@
     object-fit:cover;
     display:block;
   }
+
+/* ドラッグ中、元の手札カードを消す */
+.my-card.drag-origin-hidden{
+  opacity: 0;
+  visibility: hidden;
+}
+
+
 </style>
 </head>
 <body>
@@ -606,7 +624,9 @@ const state = {
   seatedTable: null,
   isHost: false,
   hands: {},
-  room: {}
+  room: {},
+  pointsDisplay: {},      // { [pid]: {red, white} } 途中状態表示用
+  _pointsAnimToken: {},   // { [pid]: any } アニメ中断用
 };
 
 const mainEl = document.getElementById('main');
@@ -871,7 +891,7 @@ async function redistributeAllCardsToNegativeOne_AfterAnimations(){
 
   const base = `rooms/${state.roomCode}`;
 
-  await sleepFor(3000);
+  await sleepFor(1500);
 
   const roomSnap1 = await get(ref(db, `rooms/${state.roomCode}`));
   const room1 = roomSnap1.val() || {};
@@ -892,7 +912,7 @@ async function redistributeAllCardsToNegativeOne_AfterAnimations(){
       "wolfResult/appliedDeltas": appliedDeltas
     });
   }
-
+await sleepFor(1500);
   await update(ref(db, base), {
     roundCycle: {
       token,
@@ -1172,11 +1192,113 @@ async function ensureMyPoints(){
   if (snap.exists()) return;
   await set(pRef, 3);
 }
+function setDisplayTokens(pid, tokens){
+  state.pointsDisplay[pid] = { red: clamp0(tokens.red), white: clamp0(tokens.white) };
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function clearDisplayTokens(pid){
+  delete state.pointsDisplay[pid];
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+function startPointsTokenAnimation(pid, startTokens, delta){
+  const token = `${Date.now()}_${Math.random()}`;
+  state._pointsAnimToken[pid] = token;
+  runPointsTokenAnimation(pid, startTokens, delta, token);
+}
+
+async function runPointsTokenAnimation(pid, tokens, delta, token){
+  // 速度（好みで調整OK）
+  const STEP_MS = 120;       // 白±1 のテンポ
+  const CONVERT_MS = 140;    // 5→赤 / 赤→白×5 の「変換」テンポ
+
+  // まず現在値を表示側に固定
+  setDisplayTokens(pid, tokens);
+
+  if (delta > 0){
+    // 増える時：白を増やす → 5なら赤に変換
+    for (let i=0; i<delta; i++){
+      if (state._pointsAnimToken[pid] !== token) return;
+
+      tokens.white += 1;
+      setDisplayTokens(pid, tokens);
+      await sleepFor(STEP_MS);
+
+      if (state._pointsAnimToken[pid] !== token) return;
+
+      if (tokens.white >= 5){
+        // 変換（白5→赤1）
+        tokens.white -= 5;
+        tokens.red += 1;
+        setDisplayTokens(pid, tokens);
+        await sleepFor(CONVERT_MS);
+      }
+    }
+  } else {
+    // 減る時：5以下になる（=白が足りない）なら赤を白5へ崩してからマイナス
+    const steps = Math.abs(delta);
+    for (let i=0; i<steps; i++){
+      if (state._pointsAnimToken[pid] !== token) return;
+
+      if (tokens.white <= 0){
+        if (tokens.red > 0){
+          // まず赤→白×5（合計は同じだが、見た目を崩すのが目的）
+          tokens.red -= 1;
+          tokens.white += 5;
+          setDisplayTokens(pid, tokens);
+          await sleepFor(CONVERT_MS);
+        } else {
+          // 0未満にはしない
+          tokens.white = 0; tokens.red = 0;
+          setDisplayTokens(pid, tokens);
+          break;
+        }
+      }
+
+      if (state._pointsAnimToken[pid] !== token) return;
+
+      tokens.white -= 1;
+      if (tokens.white < 0) tokens.white = 0;
+      setDisplayTokens(pid, tokens);
+      await sleepFor(STEP_MS);
+    }
+  }
+
+  // 最終的にDBの合計表示へ戻す（途中表示を解除）
+  if (state._pointsAnimToken[pid] === token){
+    clearDisplayTokens(pid);
+  }
+}
+
+
+let prevPointsTotals = {};
+
 function subscribePoints(){
   if (!state.roomCode) return;
   const pRoot = ref(db, `rooms/${state.roomCode}/points`);
+
   onValue(pRoot, snap => {
-    state.room.points = snap.val() || {};
+    const next = snap.val() || {};
+    const prev = prevPointsTotals || {};
+    prevPointsTotals = structuredClone(next);
+
+    state.room.points = next;
+
+    // 変化分を検出して段階アニメ（UIだけ）
+    for (const pid of Object.keys(next)){
+      const beforeTotal = Number(prev[pid] ?? next[pid] ?? 0);
+      const afterTotal  = Number(next[pid] ?? 0);
+      const delta = afterTotal - beforeTotal;
+
+      if (delta !== 0){
+        const baseTokens =
+          state.pointsDisplay?.[pid] ? { ...state.pointsDisplay[pid] } : tokensFromTotal(beforeTotal);
+
+        startPointsTokenAnimation(pid, baseTokens, delta);
+      }
+    }
+
     if (latestPlayers.length) renderPlayerCircle(latestPlayers);
   });
 }
@@ -1411,6 +1533,29 @@ function clearWolfOverlay(){
   }
 }
 
+const WOLF_PICK_BASE_W = 43;
+const WOLF_PICK_BASE_H = 64;
+
+function getMyIdentityCardRect(){
+  // 自分の正体カード（my-hand内の最初の .my-card）をターゲットにする
+  const card = myHandEl?.querySelector('.my-card');
+  if (!card) return null;
+  const r = card.getBoundingClientRect();
+  return { left:r.left, top:r.top, width:r.width, height:r.height };
+}
+
+function getSelfWolfLandPoint(rect){
+  // 「カードの上半分まで」「ちょっと右よせ」
+  const x = rect.left + rect.width  * 0.64;  // 少し右寄せ
+  const y = rect.top  + rect.height * 0.32;  // 上半分の中心寄り
+  return { x, y };
+}
+
+function computeUniformScaleToMatch(rect){
+  // 小カード(43x64) → 自分の正体カードサイズへ “だんだん拡大”
+  return Math.min(rect.width / WOLF_PICK_BASE_W, rect.height / WOLF_PICK_BASE_H);
+}
+
 async function runWolfPickAnimationIfNeeded(){
   const chosenId = state.room?.wolfChoice?.chosenId;
   if (!chosenId) return;
@@ -1420,13 +1565,29 @@ async function runWolfPickAnimationIfNeeded(){
   await new Promise(r => requestAnimationFrame(()=>r()));
 
   const wolfId = findWolfId(state.hands || {});
-  const to = getMiniIdentityCardCenter(chosenId);
-  if (!to) return;
+  const isSelfChosen = (chosenId === state.userId);
+
+  // ターゲット座標
+  let to = null;
+  let end = null;
+  let endScale = 1;
+
+  if (isSelfChosen){
+    const rect = getMyIdentityCardRect();
+    if (!rect) return;
+    const p = getSelfWolfLandPoint(rect);
+    end = { x: p.x, y: p.y };
+    endScale = computeUniformScaleToMatch(rect);
+  } else {
+    to = getMiniIdentityCardCenter(chosenId);
+    if (!to) return;
+    end = { x: to.x + WOLF_LAND_OFFSET_X, y: to.y + WOLF_LAND_OFFSET_Y };
+    endScale = 1;
+  }
 
   wolfAnimHandledChosenId = chosenId;
 
   playerCircle.classList.remove('wolf-reveal');
-
   clearWolfOverlay();
 
   const el = document.createElement('div');
@@ -1435,30 +1596,37 @@ async function runWolfPickAnimationIfNeeded(){
   document.body.appendChild(el);
   wolfOverlayEl = el;
 
+  // 出発点（狼のミニカード中心 → 取れなければタグ中心）
   const from = wolfId ? getMiniIdentityCardCenter(wolfId) : null;
-  const start = from || getTagCenterByPlayerId(wolfId) || { x: to.x, y: to.y - 40 };
-
-  const end = { x: to.x + WOLF_LAND_OFFSET_X, y: to.y + WOLF_LAND_OFFSET_Y };
+  const start = from || getTagCenterByPlayerId(wolfId) || { x: end.x, y: end.y - 40 };
 
   el.style.left = start.x + 'px';
   el.style.top  = start.y + 'px';
 
+  // ★ 自分が選ばれた時：小→大へ拡大しつつ移動（だんだん拡大）
   await el.animate([
-    { left:`${start.x}px`, top:`${start.y}px`, transform:'translate(-50%,-50%) rotate(0deg) scale(1)' },
-    { left:`${end.x}px`,   top:`${end.y}px`,   transform:'translate(-50%,-50%) rotate(0deg) scale(1)' }
+    {
+      left:`${start.x}px`, top:`${start.y}px`,
+      transform:`translate(-50%,-50%) rotate(0deg) scale(1)`
+    },
+    {
+      left:`${end.x}px`, top:`${end.y}px`,
+      transform:`translate(-50%,-50%) rotate(0deg) scale(${endScale})`
+    }
   ], {
-    duration: 420,
+    duration: isSelfChosen ? 620 : 420,
     easing: 'cubic-bezier(.22,.84,.44,1)',
     fill: 'forwards'
   }).finished;
 
+  // ちょい揺れ（拡大後のサイズ維持）
   await el.animate([
-    { transform:'translate(-50%,-50%) rotate(0deg)' },
-    { transform:'translate(-50%,-50%) rotate(-6deg)' },
-    { transform:'translate(-50%,-50%) rotate(6deg)' },
-    { transform:'translate(-50%,-50%) rotate(-5deg)' },
-    { transform:'translate(-50%,-50%) rotate(5deg)' },
-    { transform:'translate(-50%,-50%) rotate(0deg)' }
+    { transform:`translate(-50%,-50%) rotate(0deg) scale(${endScale})` },
+    { transform:`translate(-50%,-50%) rotate(-6deg) scale(${endScale})` },
+    { transform:`translate(-50%,-50%) rotate(6deg)  scale(${endScale})` },
+    { transform:`translate(-50%,-50%) rotate(-5deg) scale(${endScale})` },
+    { transform:`translate(-50%,-50%) rotate(5deg)  scale(${endScale})` },
+    { transform:`translate(-50%,-50%) rotate(0deg)  scale(${endScale})` }
   ], {
     duration: 340,
     easing: 'ease-in-out',
@@ -1480,18 +1648,20 @@ async function runWolfPickAnimationIfNeeded(){
     el.style.left = L + 'px';
     el.style.top  = T + 'px';
 
+    // 回転（拡大スケール維持）
     await el.animate([
-      { left:`${L}px`, top:`${T}px`, transform:'translate(-50%,-50%) rotate(0deg)' },
-      { left:`${L}px`, top:`${T}px`, transform:'translate(-50%,-50%) rotate(175deg)' }
+      { left:`${L}px`, top:`${T}px`, transform:`translate(-50%,-50%) rotate(0deg)   scale(${endScale})` },
+      { left:`${L}px`, top:`${T}px`, transform:`translate(-50%,-50%) rotate(175deg) scale(${endScale})` }
     ], {
       duration: 220,
       easing: 'linear',
       fill: 'forwards'
     }).finished;
 
+    // 落下（拡大スケール維持）
     await el.animate([
-      { left:`${L}px`, top:`${T}px`, transform:'translate(-50%,-50%) rotate(175deg)', opacity: 1 },
-      { left:`${L}px`, top:`${fallToTop}px`, transform:'translate(-50%,-50%) rotate(175deg)', opacity: 1 }
+      { left:`${L}px`, top:`${T}px`,       transform:`translate(-50%,-50%) rotate(175deg) scale(${endScale})`, opacity: 1 },
+      { left:`${L}px`, top:`${fallToTop}px`, transform:`translate(-50%,-50%) rotate(175deg) scale(${endScale})`, opacity: 1 }
     ], {
       duration: 2300,
       easing: 'linear',
@@ -1504,7 +1674,6 @@ async function runWolfPickAnimationIfNeeded(){
     await redistributeAllCardsToNegativeOne_AfterAnimations();
   }
 }
-
 /* =========================================================
    ★ UIレンダー
    ========================================================= */
@@ -1527,10 +1696,10 @@ function renderMyHand(){
     card.innerHTML = `<img src="${role.img}" alt="${role.name}">`;
 
     if (pulsingRoles){
-      card.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        startDrag(role, e);
-      });
+card.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  startDrag(role, e, card);
+});
     } else {
       card.addEventListener('pointerdown', (e) => { e.preventDefault(); });
     }
@@ -1826,27 +1995,39 @@ function subscribePlayers(){
   });
 }
 
-/* 表示は「合計点」から hearts=floor(p/5), chips=p%5 */
-function makePointChips(pointsTotal){
+function tokensFromTotal(pointsTotal){
+  const p = clamp0(pointsTotal || 0);
+  return { red: Math.floor(p / 5), white: p % 5 };
+}
+
+/* 表示は tokens({red,white}) が来たらそれを優先 */
+function makePointChips(pointsOrTokens){
   const wrap = document.createElement('div');
   wrap.className = 'point-chips';
 
-  const p = clamp0(pointsTotal || 0);
-  const hearts = Math.floor(p / 5);
-  const rem = p % 5;
+  let red = 0, white = 0;
+  if (typeof pointsOrTokens === 'object' && pointsOrTokens){
+    red   = clamp0(pointsOrTokens.red);
+    white = clamp0(pointsOrTokens.white);
+  } else {
+    const t = tokensFromTotal(pointsOrTokens);
+    red = t.red; white = t.white;
+  }
 
-  for (let i=0;i<hearts;i++){
+  for (let i=0;i<red;i++){
     const h = document.createElement('div');
     h.className = 'heart';
     wrap.appendChild(h);
   }
-  for (let i=0;i<rem;i++){
+  for (let i=0;i<white;i++){
     const c = document.createElement('div');
     c.className = 'chip';
     wrap.appendChild(c);
   }
   return wrap;
 }
+
+
 
 function renderPlayerCircle(players){
   playerCircle.innerHTML = '';
@@ -1982,8 +2163,11 @@ function renderPlayerCircle(players){
       }
     }
 
-    const ptsTotal = (state.room.points && state.room.points[p.id] != null) ? state.room.points[p.id] : 3;
-    const chipWrap = makePointChips(ptsTotal);
+const ptsTotal = (state.room.points && state.room.points[p.id] != null) ? state.room.points[p.id] : 3;
+
+// ★ 段階アニメ中は pointsDisplay の {red,white} を優先して描画
+const disp = state.pointsDisplay?.[p.id] || ptsTotal;
+const chipWrap = makePointChips(disp);
 
     wrap.appendChild(tag);
     wrap.appendChild(chipWrap);
@@ -2063,18 +2247,18 @@ function setDraggingUI(on){
   document.body.classList.toggle('dragging', !!on);
 }
 
-function startDrag(role, pointerEvent){
+function startDrag(role, pointerEvent, originEl){
   if (!canTransferNow()) return;
 
   const g = document.createElement('div');
   g.className = 'drag-ghost';
-
-  /* ★ 正体カード名タグ削除：ghostも画像のみ */
   g.innerHTML = `<img src="${role.img}" alt="${role.name}">`;
-
   document.body.appendChild(g);
 
-  drag = { role, ghost: g, pointerId: pointerEvent.pointerId };
+  // ★ 元カードを隠す
+  if (originEl) originEl.classList.add('drag-origin-hidden');
+
+  drag = { role, ghost: g, pointerId: pointerEvent.pointerId, originEl };
 
   g.style.left = pointerEvent.clientX + 'px';
   g.style.top  = pointerEvent.clientY + 'px';
@@ -2085,6 +2269,7 @@ function startDrag(role, pointerEvent){
   window.addEventListener('pointermove', onDragMove, { passive:false });
   window.addEventListener('pointerup', onDragEnd, { passive:false });
 }
+
 
 function onDragMove(e){
   if (!drag) return;
@@ -2107,11 +2292,15 @@ async function onDragEnd(e){
 
   const role = drag.role;
   const ghost = drag.ghost;
+  const originEl = drag.originEl;
 
   removeDropHighlights();
 
   const target = getDropTargetByPoint(e.clientX, e.clientY);
   const dropToPlayerId = target ? target.getAttribute('data-player-id') : null;
+
+  // ★ 先に元カードを戻す（成功/失敗どちらでも）
+  if (originEl) originEl.classList.remove('drag-origin-hidden');
 
   ghost.remove();
   drag = null;
@@ -2220,4 +2409,3 @@ btnResetRoom.addEventListener('click', async () => {
 
 </body>
 </html>
-
