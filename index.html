@@ -1,5 +1,11 @@
+自分のカードが選ばれた時にオオカミが迫るアニメで、点数計算の直前にオオカミカードが元の位置に再生成されてしまう。オオカミは移動先で待機。（落下の場合も移動先で待機）  
+オオカミのプレイヤーは選んだ先にカードが移動アニメ。だんたんと他プレイヤーカードサイズに変化。
 
-<!DOCTYPE html>   
+
+
+
+
+<!DOCTYPE html>    
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -1384,6 +1390,25 @@ async function transferCardToPlayer(role, toPlayerId){
   return true;
 }
 
+// ★ NEW：狼アニメ中だけ「狼の元カード」を一時非表示にする
+let wolfOriginHideUntil = 0;
+let wolfOriginHideKey = null;   // keyForCard() で一致させる
+let wolfOriginHidePid = null;   // 狼の playerId
+function hideWolfOriginFor(ms, wolfPid, wolfCard){
+  wolfOriginHideUntil = performance.now() + ms;
+  wolfOriginHidePid = wolfPid;
+  wolfOriginHideKey = keyForCard(wolfCard);
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+function clearWolfOriginHide(){
+  wolfOriginHideUntil = 0;
+  wolfOriginHidePid = null;
+  wolfOriginHideKey = null;
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+
+
 /* ★ ミニカード表示を「アニメ終了後」にするための遅延レンダー */
 let deferMiniRenderUntil = 0;
 let deferMiniHideKey = null;
@@ -1558,6 +1583,16 @@ async function runWolfPickAnimationIfNeeded(){
   const wolfId = findWolfId(state.hands || {});
   const isSelfChosen = (chosenId === state.userId);
 
+// ★ NEW：アニメ中だけ「狼の元ミニカード」を隠す（重複表示対策）
+if (wolfId){
+  const wolfCard = state.hands?.[wolfId]?.cards?.[0];
+  if (wolfCard){
+    // 移動(620/420)＋揺れ(340)の間は確実に隠す
+    hideWolfOriginFor(1000, wolfId, wolfCard);
+  }
+}
+
+
   // ターゲット座標
   let to = null;
   let end = null;
@@ -1625,12 +1660,14 @@ async function runWolfPickAnimationIfNeeded(){
   }).finished;
 
   playerCircle.classList.add('wolf-reveal');
+clearWolfOriginHide();
+
   await sleepFor(380);
 
   const face = state.room?.sleep?.[chosenId]?.face || 'omote';
 
   if (face === 'ura'){
-    await sleepFor(2000);
+    await sleepFor(1600);
 
     const L = end.x;
     const T = end.y;
@@ -2101,6 +2138,15 @@ function renderPlayerCircle(players){
 
       const cardsArr = handData.cards;
       let visibleCards = cardsArr.slice();
+// ★ NEW：狼アニメ中だけ「狼の元カード」を隠す
+const now2 = performance.now();
+const shouldHideWolfOrigin = (wolfOriginHideUntil && now2 < wolfOriginHideUntil);
+if (shouldHideWolfOrigin && wolfOriginHidePid === p.id && wolfOriginHideKey){
+  const ix2 = visibleCards.findIndex(c => keyForCard(c) === wolfOriginHideKey);
+  if (ix2 >= 0) visibleCards.splice(ix2, 1);
+}
+
+
 
       if (shouldDefer && deferMiniHideKey){
         const ix = visibleCards.findIndex(c => keyForCard(c) === deferMiniHideKey);
@@ -2399,4 +2445,4 @@ btnResetRoom.addEventListener('click', async () => {
 </script>
 
 </body>
-</html>
+</html> 
