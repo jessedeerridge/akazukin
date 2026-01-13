@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>    
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>テンプレ</title>
+<title>赤ずきんは眠らない</title>
 <style>
   html, body{height:100%; overflow:hidden;}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#111;}
@@ -381,6 +380,40 @@
   }
   .wolf-pick-card img{width:100%;height:100%;object-fit:cover;display:block;}
 
+  .winner-overlay{
+    position:fixed;
+    inset:0;
+    display:grid;
+    place-items:center;
+    background:rgba(0,0,0,.35);
+    z-index:21000;
+  }
+  .winner-overlay.hidden{display:none;}
+  .winner-card{
+    position:fixed;
+    left:50%;
+    top:50%;
+    width:140px;
+    height:210px;
+    border-radius:14px;
+    border:2px solid rgba(255,255,255,.85);
+    box-shadow:0 20px 50px rgba(0,0,0,.45);
+    overflow:hidden;
+    background:#fff;
+    transform:translate(-50%,-50%) scale(1);
+  }
+  .winner-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  @keyframes winnerShake{
+    0%{transform:translate(-50%,-50%) rotate(0deg) scale(1);}
+    15%{transform:translate(-50%,-50%) rotate(-4deg) scale(1.02);}
+    30%{transform:translate(-50%,-50%) rotate(4deg) scale(1.02);}
+    45%{transform:translate(-50%,-50%) rotate(-3deg) scale(1.01);}
+    60%{transform:translate(-50%,-50%) rotate(3deg) scale(1.01);}
+    75%{transform:translate(-50%,-50%) rotate(-2deg) scale(1.01);}
+    100%{transform:translate(-50%,-50%) rotate(0deg) scale(1);}
+  }
+
+
   :root{
     --pt-chip: 14px;
     --pt-heart-scale: 1.3;
@@ -506,12 +539,14 @@
 }
 
 
+
+
 </style>
 </head>
 <body>
 
 <header>
-  <h1>テンプレ</h1>
+  <h1>赤ずきんは眠らない</h1>
   <div style="display:flex;align-items:center;gap:6px;">
     <div class="small" id="roomInfo"></div>
     <button class="btn ghost" id="copyLinkBtn">COPY</button>
@@ -731,6 +766,12 @@ function getTagCenterByPlayerId(pid){
   return { x: r.left + r.width/2, y: r.top + r.height/2 };
 }
 
+function getWolfOverlayCenter(){
+  if (!wolfOverlayEl) return null;
+  const r = wolfOverlayEl.getBoundingClientRect();
+  return { x: r.left + r.width/2, y: r.top + r.height/2 };
+}
+
 /* ★ 正体カード名タグ削除：flyカードは画像のみ */
 function createFlyCard(role, x, y){
   const d = document.createElement('div');
@@ -744,7 +785,53 @@ function createFlyCard(role, x, y){
 
 let redistributeAnimHandledToken = null;
 
+let winnerOverlayEl = null;
+async function showWinnerCardAnimation(playerId, handsObj){
+  const card = handsObj?.[playerId]?.cards?.[0];
+  if (!card?.img) return;
+
+  if (winnerOverlayEl){
+    winnerOverlayEl.remove();
+    winnerOverlayEl = null;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'winner-overlay';
+  const winnerCard = document.createElement('div');
+  winnerCard.className = 'winner-card';
+  winnerCard.innerHTML = `<img src="${card.img}" alt="${card.name || ''}">`;
+  overlay.appendChild(winnerCard);
+  document.body.appendChild(overlay);
+  winnerOverlayEl = overlay;
+
+  winnerCard.style.animation = 'winnerShake 2s ease-in-out both';
+  await sleepFor(2000);
+
+  if (winnerOverlayEl === overlay){
+    overlay.remove();
+    winnerOverlayEl = null;
+  }
+}
+
+function findOverScorePlayer(pointsObj, threshold = 10){
+  let winnerId = null;
+  let best = threshold;
+  for (const [pid, pts] of Object.entries(pointsObj || {})){
+    const val = Number(pts || 0);
+    if (val > best){
+      best = val;
+      winnerId = pid;
+    }
+  }
+  return winnerId;
+}
+
 function getCardCentersForPlayer(pid){
+  const wolfId = findWolfId(state.hands || {});
+  if (wolfId && pid === wolfId){
+    const wolfCenter = getWolfOverlayCenter();
+    if (wolfCenter) return [wolfCenter];
+  }
   if (pid === state.userId){
     const els = Array.from(myHandEl.querySelectorAll('.my-card'));
     if (els.length){
@@ -785,12 +872,11 @@ async function runRedistributeAllCardsAnimation(token, toPlayerId, handsObj){
     if (!Array.isArray(cards) || !cards.length) continue;
 
     const centers = getCardCentersForPlayer(pid);
-    for (let i=0;i<cards.length;i++){
-      const role = cards[i];
-      const src = centers[i] || centers[centers.length-1] || getTagCenterByPlayerId(pid) || end;
-      entries.push({ role, src, idx: entries.length });
-    }
+    const role = cards[0];
+    const src = centers[0] || centers[centers.length-1] || getTagCenterByPlayerId(pid) || end;
+    entries.push({ role, src, idx: entries.length });
   }
+
 
   const baseDur = 620;
   const stepDelay = 24;
@@ -894,15 +980,33 @@ async function redistributeAllCardsToNegativeOne_AfterAnimations(){
   if (!resolvedAtNow) return;
 
   const applyLockRef = ref(db, `rooms/${state.roomCode}/wolfResult/pointsAppliedAt`);
-  const applyLock = await runTransaction(applyLockRef, (cur) => cur ? cur : Date.now());
+  const applyLock = await runTransaction(applyLockRef, (cur) => cur ? cur : { at: Date.now(), by: state.userId });
+  const lockVal = applyLock.snapshot.val();
+  const lockOwner = (lockVal && typeof lockVal === 'object') ? lockVal.by : null;
+  const didAcquireLock = applyLock.committed && lockOwner === state.userId;
 
-  if (applyLock.committed) {
+  let pointsAfter = pointsNow;
+  if (didAcquireLock && !wolfResult1.appliedDeltas) {
     const { newPoints, appliedDeltas } = applyIntendedDeltasToPoints(pointsNow, intended);
     await update(ref(db, base), {
       points: newPoints,
       "wolfResult/appliedDeltas": appliedDeltas
     });
+    pointsAfter = newPoints;
+  } else if (!wolfResult1.appliedDeltas) {
+    await sleepFor(200);
+    const roomSnap2 = await get(ref(db, `rooms/${state.roomCode}`));
+    const room2 = roomSnap2.val() || {};
+    pointsAfter = room2.points || pointsAfter;
   }
+
+  const winnerId = findOverScorePlayer(pointsAfter, 10);
+  if (winnerId){
+    const handsForWinner = room1.hands || state.hands || {};
+    await showWinnerCardAnimation(winnerId, handsForWinner);
+    return;
+  }
+
 await sleepFor(1500);
   await update(ref(db, base), {
     roundCycle: {
@@ -932,6 +1036,7 @@ await sleepFor(1500);
   prevHandsSnapshot = structuredClone(newHands);
 
   wolfAnimHandledChosenId = null;
+  clearWolfOriginHide();
   clearWolfOverlay();
   playerCircle.classList.remove('wolf-reveal');
 }
@@ -1388,8 +1493,8 @@ async function transferCardToPlayer(role, toPlayerId){
 let wolfOriginHideUntil = 0;
 let wolfOriginHideKey = null;   // keyForCard() で一致させる
 let wolfOriginHidePid = null;   // 狼の playerId
-function hideWolfOriginFor(ms, wolfPid, wolfCard){
-  wolfOriginHideUntil = performance.now() + ms;
+function hideWolfOriginUntilCleared(wolfPid, wolfCard){
+  wolfOriginHideUntil = Number.POSITIVE_INFINITY;
   wolfOriginHidePid = wolfPid;
   wolfOriginHideKey = keyForCard(wolfCard);
   if (latestPlayers.length) renderPlayerCircle(latestPlayers);
@@ -1460,6 +1565,8 @@ function detectSingleTransfer(prevHands, nextHands){
   return { fromId, toId, card: movedCard };
 }
 
+const TRANSFER_ANIM_MS = 520;
+
 function animateTagToTag(role, fromPlayerId, toPlayerId){
   const a = getTagCenterByPlayerId(fromPlayerId);
   const b = getTagCenterByPlayerId(toPlayerId);
@@ -1467,7 +1574,8 @@ function animateTagToTag(role, fromPlayerId, toPlayerId){
 
   const fly = createFlyCard(role, a.x, a.y);
   const start = performance.now();
-  const dur = 520;
+  const dur = TRANSFER_ANIM_MS;
+
 
   deferMiniHideKey = keyForCard(role);
   scheduleMiniRenderAfter(dur);
@@ -1497,6 +1605,19 @@ function animateTransferForThisClient(role, fromPlayerId, toPlayerId){
   animateTagToTag(role, fromPlayerId, toPlayerId);
 }
 
+let deferMyHandRenderUntil = 0;
+let deferMyHandHideKey = null;
+function scheduleMyHandRenderAfter(ms){
+  deferMyHandRenderUntil = performance.now() + ms;
+  setTimeout(() => {
+    if (performance.now() >= deferMyHandRenderUntil){
+      deferMyHandRenderUntil = 0;
+      deferMyHandHideKey = null;
+      renderMyHand();
+    }
+  }, ms + 30);
+}
+
 function subscribeHands(){
   const handsRef = ref(db, `rooms/${state.roomCode}/hands`);
   onValue(handsRef, snap => {
@@ -1505,6 +1626,10 @@ function subscribeHands(){
     const info = detectSingleTransfer(prevHandsSnapshot, nextHands);
     if (info){
       animateTransferForThisClient(info.card, info.fromId, info.toId);
+      if (state.userId === info.toId){
+        deferMyHandHideKey = keyForCard(info.card);
+        scheduleMyHandRenderAfter(TRANSFER_ANIM_MS);
+      }
     }
 
     prevHandsSnapshot = structuredClone(nextHands);
@@ -1562,8 +1687,11 @@ function getSelfWolfLandPoint(rect){
 }
 
 function computeUniformScaleToMatch(rect){
-  // 小カード(43x64) → 自分の正体カードサイズへ “だんだん拡大”
-  return Math.min(rect.width / WOLF_PICK_BASE_W, rect.height / WOLF_PICK_BASE_H);
+  const width = rect?.width ?? rect?.w;
+  const height = rect?.height ?? rect?.h;
+  if (!width || !height) return 1;
+  // 小カード(43x64) → 対象カードサイズへ “だんだん拡大/縮小”
+  return Math.min(width / WOLF_PICK_BASE_W, height / WOLF_PICK_BASE_H);
 }
 
 async function runWolfPickAnimationIfNeeded(){
@@ -1581,8 +1709,7 @@ async function runWolfPickAnimationIfNeeded(){
 if (wolfId){
   const wolfCard = state.hands?.[wolfId]?.cards?.[0];
   if (wolfCard){
-    // 移動(620/420)＋揺れ(340)の間は確実に隠す
-    hideWolfOriginFor(1000, wolfId, wolfCard);
+    hideWolfOriginUntilCleared(wolfId, wolfCard);
   }
 }
 
@@ -1590,6 +1717,7 @@ if (wolfId){
   // ターゲット座標
   let to = null;
   let end = null;
+  let startScale = 1;
   let endScale = 1;
 
   if (isSelfChosen){
@@ -1602,7 +1730,7 @@ if (wolfId){
     to = getMiniIdentityCardCenter(chosenId);
     if (!to) return;
     end = { x: to.x + WOLF_LAND_OFFSET_X, y: to.y + WOLF_LAND_OFFSET_Y };
-    endScale = 1;
+    endScale = computeUniformScaleToMatch(to);
   }
 
   wolfAnimHandledChosenId = chosenId;
@@ -1617,7 +1745,8 @@ if (wolfId){
   wolfOverlayEl = el;
 
   // 出発点（狼のミニカード中心 → 取れなければタグ中心）
-  const from = wolfId ? getMiniIdentityCardCenter(wolfId) : null;
+const from = wolfId ? getMiniIdentityCardCenter(wolfId) : null;
+  startScale = computeUniformScaleToMatch(from);
   const start = from || getTagCenterByPlayerId(wolfId) || { x: end.x, y: end.y - 40 };
 
   el.style.left = start.x + 'px';
@@ -1627,7 +1756,7 @@ if (wolfId){
   await el.animate([
     {
       left:`${start.x}px`, top:`${start.y}px`,
-      transform:`translate(-50%,-50%) rotate(0deg) scale(1)`
+      transform:`translate(-50%,-50%) rotate(0deg) scale(${startScale})`
     },
     {
       left:`${end.x}px`, top:`${end.y}px`,
@@ -1654,7 +1783,6 @@ if (wolfId){
   }).finished;
 
   playerCircle.classList.add('wolf-reveal');
-clearWolfOriginHide();
 
   await sleepFor(380);
 
@@ -1707,10 +1835,24 @@ function renderMyHand(){
 
   const canTransfer = canTransferNow();
   const pulsingRoles = isDealer() && canTransfer;
+  const now = performance.now();
+  const shouldDeferMyHand = (deferMyHandRenderUntil && now < deferMyHandRenderUntil);
+  if (!shouldDeferMyHand && deferMyHandRenderUntil){
+    deferMyHandRenderUntil = 0;
+    deferMyHandHideKey = null;
+  }
+  const shouldHideWolfOrigin = (wolfOriginHideUntil && now < wolfOriginHideUntil);
 
   handData.cards.forEach(role => {
-    const card = document.createElement('div');
+    const roleKey = keyForCard(role);
+    if (shouldDeferMyHand && deferMyHandHideKey && roleKey === deferMyHandHideKey){
+      return;
+    }
+    if (shouldHideWolfOrigin && wolfOriginHidePid === myId && wolfOriginHideKey === roleKey){
+      return;
+    }
 
+    const card = document.createElement('div');
     const noTransferClass = (isDealer() && !canTransfer) ? ' no-transfer' : '';
     card.className = 'my-card' + (pulsingRoles ? ' pulsing' : '') + noTransferClass;
 
@@ -2396,6 +2538,7 @@ async function dealIdentityToOnePlayer(){
   prevHandsSnapshot = structuredClone(hands);
 
   wolfAnimHandledChosenId = null;
+  clearWolfOriginHide();
   clearWolfOverlay();
   playerCircle.classList.remove('wolf-reveal');
 }
@@ -2433,6 +2576,7 @@ btnResetRoom.addEventListener('click', async () => {
   await syncSeatUI();
 
   wolfAnimHandledChosenId = null;
+  clearWolfOriginHide();
   clearWolfOverlay();
   playerCircle.classList.remove('wolf-reveal');
 });
@@ -2440,4 +2584,3 @@ btnResetRoom.addEventListener('click', async () => {
 
 </body>
 </html> 
-
