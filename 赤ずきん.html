@@ -1,0 +1,2222 @@
+<!DOCTYPE html>   
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>テンプレ</title>
+<style>
+  html, body{height:100%; overflow:hidden;}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#fff;color:#111;}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #eee; position:sticky; top:0; z-index:400; background:#fff;}
+  h1{margin:0;font-size:18px;}
+  .small{font-size:12px;opacity:.75;}
+  .join-box{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:12px; position:relative; z-index:2;}
+  .join-box input{padding:8px;border:1px solid #ddd;border-radius:6px;font-size:16px;}
+  .btn{padding:6px 10px;border:1px solid #ddd;border-radius:6px;background:#f8f8f8;cursor:pointer;}
+  .btn.primary{background:#111;color:#fff;border-color:#111;}
+  .btn.ghost{background:transparent;}
+  .hidden{display:none;}
+  #lobby{padding:20px;border-top:1px solid #eee; position:relative; z-index:2;}
+  .copy-btn.copied, .btn.ghost.copied{background:#16a34a;color:#fff;border-color:#16a34a;}
+
+  main{
+    position:relative;
+    height:calc(100vh - 60px);
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+  }
+  main.prejoin{ background-image:url('akazukintop.jpg'); }
+  main.joined{ background-image:url('akazukinmain.jpg'); }
+
+  .seat-pop{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
+    background:orange;border:1px solid #eee;border-radius:12px;
+    box-shadow:0 12px 28px rgba(0,0,0,.12);
+    padding:10px;z-index:220;display:flex;flex-direction:column;gap:10px;min-width:280px;
+  }
+  .seat-pop.hidden{display:none;}
+  .seat-pop .row{display:flex;gap:8px;align-items:center;}
+  .seat-pop label{width:84px;font-size:13px;}
+  .seat-pop .tabs{display:flex;gap:6px;flex-wrap:wrap;}
+  .tab{padding:6px 10px;border:1px solid #ddd;border-radius:999px;cursor:pointer;user-select:none;position:relative;}
+  .tab.disabled{opacity:.45; pointer-events:none;}
+  .tab.disabled::after{content:'✕';position:absolute;inset:0;display:grid;place-items:center;font-size:18px;font-weight:700;color:#b91c1c;pointer-events:none;}
+  .tab.active{background:#111;color:#fff;border-color:#111;}
+
+  .host-selecting-pop{
+    position:fixed;left:50%;bottom:10px;transform:translateX(-50%);
+    background:rgba(20,20,20,.92);color:#fff;
+    padding:12px 16px;border-radius:14px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    z-index:225;font-weight:800;white-space:nowrap;
+    pointer-events:none;
+  }
+  .host-selecting-pop.hidden{display:none;}
+
+  .player-circle{
+    position:relative;width:260px;height:260px;
+    margin:20px auto 0;border-radius:50%;
+    box-sizing:border-box;border:none;
+  }
+  .player-circle::before{content:'';}
+
+  .player-tag-wrap{
+    position:absolute;transform:translate(-50%,-50%);
+    display:flex;align-items:center;gap:8px;
+  }
+
+  .player-tag{
+    position:relative;
+    padding:4px 8px;border-radius:999px;background:#f8f8f8;
+    border:1px solid #ddd;font-size:12px;white-space:nowrap;
+    user-select:none;
+  }
+  .player-tag.me{ background:#111;color:#fff;border-color:#111; }
+
+  .point-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    width:78px;
+    justify-content:flex-start;
+    align-content:flex-start;
+  }
+  .chip{
+    width:14px;height:14px;border-radius:999px;
+    background:
+      radial-gradient(circle at 30% 28%, rgba(255,255,255,.95), rgba(255,255,255,.35) 40%, rgba(255,255,255,.08) 65%, rgba(255,255,255,.02)),
+      linear-gradient(135deg, rgba(255,255,255,.35), rgba(255,255,255,.05));
+    border:1px solid rgba(255,255,255,.6);
+    box-shadow:
+      inset 0 1px 2px rgba(255,255,255,.35),
+      0 2px 8px rgba(0,0,0,.18);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .chip.empty{
+    opacity:.35;
+    box-shadow:
+      inset 0 1px 2px rgba(255,255,255,.25),
+      0 2px 6px rgba(0,0,0,.12);
+  }
+
+  /* =========================================================
+     ★ 他プレイヤーサークル（ドロップ用）
+     ========================================================= */
+  .other-area{
+    position:absolute;
+    width:92px;height:92px;border-radius:999px;
+    border:none;
+    box-shadow:none;
+    background:transparent;
+    pointer-events:none;
+    transform:translate(-50%,-50%);
+    opacity:0;
+    visibility:hidden;
+    transition:opacity .12s ease, visibility 0s linear .12s;
+  }
+  .dragging .other-area{
+    opacity:.22;
+    visibility:visible;
+    transition:opacity .12s ease, visibility 0s linear 0s;
+    background:rgba(255,255,255,.35);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .dragging .other-area.drop-active{
+    opacity:.34;
+    background:rgba(37,99,235,.18);
+  }
+  .dragging .other-area.drop-deny{
+    opacity:.10;
+    filter:grayscale(.35);
+  }
+
+  .player-tag .mini-hand{
+    position:absolute;left:50%;top:100%;
+    transform:translate(-50%,3px);
+    width:120px;height:60px;
+    pointer-events:auto;
+    transition:transform .35s cubic-bezier(.22,.84,.44,1);
+  }
+  .player-tag .mini-card{
+    position:absolute;left:50%;top:0;width:43px;height:64px;
+    border-radius:7px;border:1px solid #bbb;
+    background:linear-gradient(135deg,#e5e7eb,#cbd5f5);
+    font-size:10px;display:flex;align-items:center;justify-content:center;
+    transform-origin:bottom center;
+    box-shadow:0 2px 10px rgba(0,0,0,.16);
+    transition:transform .35s cubic-bezier(.22,.84,.44,1);
+    pointer-events:auto;
+    cursor:pointer;
+    overflow:hidden;
+  }
+
+  .mini-sleep{
+    position:absolute;left:50%;top:8px;
+    transform:translate(-50%,0);
+    width:42px;height:32px;
+    border-radius:8px;border:1px solid rgba(0,0,0,.18);
+    overflow:hidden;
+    box-shadow:0 2px 10px rgba(0,0,0,.10);
+    z-index:1;
+    opacity:.95;
+    transition:transform .35s cubic-bezier(.22,.84,.44,1);
+  }
+  .mini-sleep img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  .player-circle.wolf-reveal .player-tag:not(.wolf-me) .mini-hand{
+    transform:translate(-50%,3px) translateX(-45px);
+  }
+  .player-circle.wolf-reveal .player-tag:not(.wolf-me) .mini-sleep{
+    transform:translate(-50%,0) translateX(45px);
+  }
+
+  .my-hand-wrapper{margin-top:16px;text-align:center;}
+  .my-hand-title{display:none;}
+  .my-hand{
+    display:flex;justify-content:center;align-items:center;
+    gap:10px;margin-top:6px;min-height:120px;flex-wrap:nowrap;
+    transition:transform .35s cubic-bezier(.22,.84,.44,1);
+  }
+
+  .my-card{
+    width:88px;height:124px;border-radius:10px;border:1px solid #ddd;background:#fff;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 16px rgba(0,0,0,.16);
+    position:relative;
+    user-select:none;
+    touch-action:none;
+    cursor:grab;
+    overflow:hidden;
+  }
+  .my-card:active{cursor:grabbing;}
+  .my-card img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  .sleep-card{
+    width:110px;height:84px;
+    border-radius:12px;border:1px solid #ddd;background:#fff;
+    box-shadow:0 6px 16px rgba(0,0,0,.16);
+    position:relative;
+    overflow:hidden;
+    cursor:pointer;
+    user-select:none;
+    touch-action:manipulation;
+  }
+  .sleep-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  .sleep-card.disabled{
+    animation:none !important;
+    cursor:not-allowed !important;
+    pointer-events:none !important;
+    box-shadow:0 6px 16px rgba(0,0,0,.16) !important;
+  }
+
+  @keyframes pulseCard{
+    0%{transform:translateY(0) scale(1);}
+    50%{transform:translateY(-2px) scale(1.06);}
+    100%{transform:translateY(0) scale(1);}
+  }
+  .my-card.pulsing{
+    animation:pulseCard 1.0s ease-in-out infinite;
+    box-shadow:0 10px 24px rgba(0,0,0,.20);
+  }
+
+  @keyframes pulseSleep{
+    0%{transform:translateY(0) scale(1);}
+    50%{transform:translateY(-2px) scale(1.05);}
+    100%{transform:translateY(0) scale(1);}
+  }
+  .sleep-card.pulsing{
+    animation:pulseSleep 1.0s ease-in-out infinite;
+    box-shadow:0 10px 24px rgba(0,0,0,.20);
+  }
+
+  .my-card.no-transfer{ cursor:not-allowed; }
+  .my-card.no-transfer:active{cursor:not-allowed;}
+
+  .drag-ghost{
+    position:fixed;left:0;top:0;z-index:9999;
+    width:88px;height:124px;border-radius:10px;border:1px solid #ddd;background:#fff;
+    box-shadow:0 16px 40px rgba(0,0,0,.35);
+    pointer-events:none;
+    overflow:hidden;
+  }
+  .drag-ghost img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  .fly-card{
+    position:fixed;z-index:10000;pointer-events:none;
+    width:88px;height:124px;border-radius:10px;border:1px solid #ddd;background:#fff;
+    box-shadow:0 18px 44px rgba(0,0,0,.35);
+    overflow:hidden;
+    transform:translate(-50%,-50%);
+  }
+  .fly-card img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  .dialog-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.35);
+    display:flex;align-items:center;justify-content:center;z-index:300;
+  }
+  .dialog-backdrop.hidden{display:none;}
+  .dialog-box{
+    background:#fff;border-radius:12px;padding:16px 18px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    max-width:320px;width:calc(100% - 40px);
+  }
+  .dialog-box p{margin:0 0 12px;font-size:14px;line-height:1.6;}
+  .dialog-buttons{display:flex;justify-content:flex-end;gap:8px;}
+
+  .host-settings-btn{
+    position:fixed;right:16px;bottom:16px;width:44px;height:44px;border-radius:50%;
+    border:1px solid #ddd;background:#fff;box-shadow:0 8px 20px rgba(0,0,0,.18);
+    display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;z-index:230;
+  }
+  .host-settings-btn.visible{display:flex;}
+
+  .start-pop{
+    position:fixed;right:16px;bottom:72px;background:#fff;border:1px solid #ddd;border-radius:12px;
+    box-shadow:0 12px 28px rgba(0,0,0,.16);padding:10px 12px;z-index:240;min-width:260px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .start-pop.hidden{display:none;}
+  .start-pop-header{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .start-pop-title{font-size:14px;font-weight:600;}
+  .start-pop-main{font-size:13px;line-height:1.5;}
+  .start-pop-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px;flex-wrap:wrap;}
+
+  #roomInfoLobby, #lobby h2, #lobby p {display:none;}
+  #lobby.entered{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:calc(100vh - 60px);
+  }
+
+  .help-btn{
+    position:fixed;left:16px;bottom:16px;width:44px;height:44px;border-radius:50%;
+    border:1px solid #111;background:#111;color:#fff;
+    box-shadow:0 8px 20px rgba(0,0,0,.18);
+    display:none;align-items:center;justify-content:center;
+    font-size:22px;font-weight:800;cursor:pointer;z-index:230;
+  }
+  .help-btn.visible{display:flex;}
+
+  .help-pop-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.35);
+    display:flex;align-items:flex-end;justify-content:center;
+    z-index:310;
+    padding:16px;
+  }
+  .help-pop-backdrop.hidden{display:none;}
+  .help-pop{
+    width:min(520px, calc(100% - 0px));
+    max-height:min(70vh, 640px);
+    background:#fff;border:1px solid #ddd;border-radius:16px;
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+    overflow:hidden;
+  }
+  .help-pop-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;border-bottom:1px solid #eee;
+  }
+  .help-pop-title{font-weight:800;font-size:14px;}
+  .help-pop-body{padding:12px;overflow:auto;max-height:calc(70vh - 48px);}
+  .role-row{display:flex;gap:12px;align-items:flex-start;padding:10px 0;}
+  .role-card{
+    width:72px;height:108px;border-radius:10px;border:1px solid #ddd;background:#f8f8f8;
+    box-shadow:0 6px 16px rgba(0,0,0,.10);
+    flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;color:#444;
+    overflow:hidden;
+  }
+  .role-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  .role-desc{flex:1 1 auto;}
+  .role-desc .name{font-weight:900;margin-bottom:4px;}
+  .role-desc .text{font-size:13px;line-height:1.55;color:#222;white-space:pre-wrap;}
+
+  .decide-btn{
+    position:fixed;right:16px;bottom:16px;
+    width:72px;height:72px;border-radius:50%;
+    border:none;
+    box-shadow:0 14px 34px rgba(0,0,0,.22);
+    display:none;align-items:center;justify-content:center;
+    font-weight:900;font-size:18px;
+    cursor:pointer;
+    z-index:260;
+    user-select:none;
+  }
+  .decide-btn.visible{display:flex;}
+  .decide-btn.red{background:#ef4444;color:#fff;}
+  .decide-btn.brown{background:#8b5a2b;color:#fff;}
+  .decide-btn.done{
+    filter:saturate(.75);
+    opacity:.85;
+    cursor:not-allowed;
+  }
+
+  @keyframes pulseTag{
+    0%{transform:translateY(0) scale(1);}
+    50%{transform:translateY(-2px) scale(1.10);}
+    100%{transform:translateY(0) scale(1);}
+  }
+  .player-tag.wolf-pulse{
+    animation:pulseTag 1.0s ease-in-out infinite;
+    box-shadow:0 10px 24px rgba(0,0,0,.18);
+    border-color:rgba(0,0,0,.28);
+  }
+
+  .wolf-pick-card{
+    position:fixed;
+    z-index:20000;
+    width:43px;height:64px;
+    border-radius:7px;border:1px solid #bbb;
+    box-shadow:0 12px 28px rgba(0,0,0,.28);
+    overflow:hidden;
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+    will-change:transform, left, top;
+    background:#fff;
+  }
+  .wolf-pick-card img{width:100%;height:100%;object-fit:cover;display:block;}
+
+  :root{
+    --pt-chip: 14px;
+    --pt-heart-scale: 1.3;
+  }
+
+  .chip{
+    width: var(--pt-chip) !important;
+    height: var(--pt-chip) !important;
+  }
+
+  .heart{
+    width: calc(var(--pt-chip) * var(--pt-heart-scale)) !important;
+    height: calc(var(--pt-chip) * var(--pt-heart-scale)) !important;
+
+    position: relative;
+    display: block;
+
+    border: none !important;
+    border-radius: 0 !important;
+
+    background:
+      repeating-linear-gradient(
+        135deg,
+        rgba(225, 29, 72, .70) 0px,
+        rgba(225, 29, 72, .70) 4px,
+        rgba(225, 29, 72, .42) 4px,
+        rgba(225, 29, 72, .42) 8px
+      ),
+      radial-gradient(circle at 55% 65%,
+        rgba(225, 29, 72, .48) 0%,
+        rgba(225, 29, 72, .28) 42%,
+        rgba(225, 29, 72, .12) 70%,
+        rgba(225, 29, 72, .00) 100%
+      ),
+      linear-gradient(135deg,
+        rgba(255,255,255,.45),
+        rgba(255,255,255,.10) 40%,
+        rgba(255,255,255,.04)
+      );
+
+    -webkit-mask-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
+<path d='M16 28s-10-6.6-13.2-12.4C.7 11.8 2.7 7.8 6.4 6.2 9 5 12 6 13.8 8c.9 1 1.5 2 2.2 3 .7-1 1.3-2 2.2-3C20 6 23 5 25.6 6.2c3.7 1.6 5.7 5.6 3.6 9.4C26 21.4 16 28 16 28z' fill='black'/>\
+</svg>");
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-position: center;
+
+    mask-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>\
+<path d='M16 28s-10-6.6-13.2-12.4C.7 11.8 2.7 7.8 6.4 6.2 9 5 12 6 13.8 8c.9 1 1.5 2 2.2 3 .7-1 1.3-2 2.2-3C20 6 23 5 25.6 6.2c3.7 1.6 5.7 5.6 3.6 9.4C26 21.4 16 28 16 28z' fill='black'/>\
+</svg>");
+    mask-repeat: no-repeat;
+    mask-size: 100% 100%;
+    mask-position: center;
+
+    box-shadow:
+      inset 0 1px 2px rgba(255,255,255,.40),
+      inset 0 -2px 5px rgba(0,0,0,.16),
+      0 2px 3px rgba(0,0,0,.22);
+
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .heart::before{
+    content:"";
+    position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 28% 22%,
+        rgba(255,255,255,.85) 0%,
+        rgba(255,255,255,.25) 26%,
+        rgba(255,255,255,0) 55%
+      );
+    opacity:.80;
+    pointer-events:none;
+
+    -webkit-mask-image: inherit;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-position: center;
+    mask-image: inherit;
+    mask-repeat: no-repeat;
+    mask-size: 100% 100%;
+    mask-position: center;
+  }
+
+  .heart::after{
+    content:"";
+    position:absolute; inset:0;
+    background:
+      linear-gradient(135deg,
+        rgba(255,255,255,.35) 0%,
+        rgba(255,255,255,.10) 22%,
+        rgba(255,255,255,0) 45%,
+        rgba(255,255,255,.14) 70%,
+        rgba(255,255,255,0) 100%
+      );
+    opacity:0.60;
+    pointer-events:none;
+
+    -webkit-mask-image: inherit;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-position: center;
+    mask-image: inherit;
+    mask-repeat: no-repeat;
+    mask-size: 100% 100%;
+    mask-position: center;
+  }
+
+  .player-tag .mini-card img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>テンプレ</h1>
+  <div style="display:flex;align-items:center;gap:6px;">
+    <div class="small" id="roomInfo"></div>
+    <button class="btn ghost" id="copyLinkBtn">COPY</button>
+  </div>
+</header>
+
+<main id="main" class="prejoin">
+  <div class="join-box" id="joinBox">
+    <input id="userName" placeholder="名前（4文字以内）" maxlength="4" />
+    <input id="roomCode" placeholder="ルームコード（未入力で自動生成）" maxlength="12" />
+    <button class="btn primary" id="btnJoin">入室</button>
+  </div>
+
+  <div id="lobby" class="hidden">
+    <h2>ロビー</h2>
+    <div id="roomInfoLobby" style="margin-bottom:8px;"></div>
+    <p>ここにテーブルや情報が表示されます。</p>
+
+    <div id="playerCircle" class="player-circle"></div>
+
+    <div class="my-hand-wrapper">
+      <div class="my-hand-title">自分のカード</div>
+      <div id="myHand" class="my-hand"></div>
+    </div>
+  </div>
+</main>
+
+<div id="hostSelectingPop" class="host-selecting-pop hidden">ホストが人数を選択中</div>
+
+<div id="seatPop" class="seat-pop hidden">
+  <div class="row"><label>席を選択</label><div id="seatTabs" class="tabs"></div></div>
+  <div class="row" style="justify-content:flex-end">
+    <button class="btn small ghost" id="btnSeatCancel">観戦</button>
+  </div>
+</div>
+
+<div id="kickDialog" class="dialog-backdrop hidden">
+  <div class="dialog-box" id="kickDialogBox">
+    <p id="kickMessage">既存のプレイヤーを追い出して、着席しますか？</p>
+    <div class="dialog-buttons">
+      <button class="btn ghost" id="btnKickNo">いいえ</button>
+      <button class="btn primary" id="btnKickYes">はい</button>
+    </div>
+  </div>
+</div>
+
+<button id="hostSettingsBtn" class="host-settings-btn" title="設定">⚙</button>
+<button id="helpBtn" class="help-btn" title="正体カード一覧">？</button>
+<button id="decideBtn" class="decide-btn">決定</button>
+
+<div id="helpBackdrop" class="help-pop-backdrop hidden">
+  <div class="help-pop" role="dialog" aria-modal="true" aria-label="正体カード一覧">
+    <div class="help-pop-header">
+      <div class="help-pop-title">正体カード</div>
+      <button id="btnHelpClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
+    </div>
+    <div class="help-pop-body" id="helpBody"></div>
+  </div>
+</div>
+
+<div id="startPop" class="start-pop hidden">
+  <div class="start-pop-header">
+    <div class="start-pop-title">ホスト設定</div>
+    <button id="btnStartPopClose" class="btn ghost" style="padding:2px 6px;font-size:12px;">×</button>
+  </div>
+  <div class="start-pop-main">
+    「スタート」で<strong>正体カードを1人だけに全配布</strong>。<br>
+    「リセット」で人数選択へ戻します。
+  </div>
+  <div class="start-pop-actions">
+    <button id="btnResetRoom" class="btn ghost">リセット</button>
+    <button id="btnGameStart" class="btn primary">スタート</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getDatabase, ref, set, get, update, onValue, remove, runTransaction } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAMeKfMoHt9qOQ2VuUBpkrKuei7yGBbEi8",
+  authDomain: "cheesetheft-fd52f.firebaseapp.com",
+  databaseURL: "https://cheesetheft-fd52f-default-rtdb.firebaseio.com",
+  projectId: "cheesetheft-fd52f",
+  storageBucket: "cheesetheft-fd52f.firebasestorage.app",
+  messagingSenderId: "298688959395",
+  appId: "1:298688959395:web:6ac2c3eb214201f2020016",
+  measurementId: "G-HPDFTCLR8H"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+const savedUserId = sessionStorage.getItem('bbUserId') || crypto.randomUUID();
+sessionStorage.setItem('bbUserId', savedUserId);
+
+const state = {
+  userId: savedUserId,
+  userName: null,
+  roomCode: null,
+  seatedTable: null,
+  isHost: false,
+  hands: {},
+  room: {}
+};
+
+const mainEl = document.getElementById('main');
+const joinBox = document.getElementById('joinBox');
+const inputName = document.getElementById('userName');
+const inputCode = document.getElementById('roomCode');
+const btnJoin = document.getElementById('btnJoin');
+const lobby = document.getElementById('lobby');
+const roomInfo = document.getElementById('roomInfo');
+const roomInfoLobby = document.getElementById('roomInfoLobby');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+
+const hostSelectingPop = document.getElementById('hostSelectingPop');
+
+const seatPop = document.getElementById('seatPop');
+const seatTabs = document.getElementById('seatTabs');
+const btnSeatCancel = document.getElementById('btnSeatCancel');
+const seatLabel = seatPop.querySelector('label');
+
+const playerCircle = document.getElementById('playerCircle');
+const myHandEl = document.getElementById('myHand');
+
+const kickDialog = document.getElementById('kickDialog');
+const kickMessage = document.getElementById('kickMessage');
+const btnKickYes = document.getElementById('btnKickYes');
+const btnKickNo = document.getElementById('btnKickNo');
+
+const hostSettingsBtn = document.getElementById('hostSettingsBtn');
+const startPop = document.getElementById('startPop');
+const btnGameStart = document.getElementById('btnGameStart');
+const btnResetRoom = document.getElementById('btnResetRoom');
+
+const helpBtn = document.getElementById('helpBtn');
+const helpBackdrop = document.getElementById('helpBackdrop');
+const btnHelpClose = document.getElementById('btnHelpClose');
+const helpBody = document.getElementById('helpBody');
+
+const decideBtn = document.getElementById('decideBtn');
+
+const SLEEP_FRONT = 'sleepomote.jpg';
+const SLEEP_BACK  = 'sleepura.jpg';
+
+const ROLE_SETS = {
+  2: [
+    { id:'akazukin', name:'赤ずきん', img:'akazukin.jpg' },
+    { id:'ookami',   name:'オオカミ', img:'ookami.jpg' },
+  ],
+  3: [
+    { id:'akazukin', name:'赤ずきん', img:'akazukin.jpg' },
+    { id:'ookami',   name:'オオカミ', img:'ookami.jpg' },
+    { id:'hahabuta', name:'おやぶた',   img:'hahabuta.jpg' },
+  ],
+  4: [
+    { id:'akazukin', name:'赤ずきん', img:'akazukin.jpg' },
+    { id:'ookami',   name:'オオカミ', img:'ookami.jpg' },
+    { id:'hahabuta', name:'おやぶた',   img:'hahabuta.jpg' },
+    { id:'kobuta1',  name:'こぶた',   img:'kobuta1.jpg' },
+  ],
+  5: [
+    { id:'akazukin', name:'赤ずきん', img:'akazukin.jpg' },
+    { id:'ookami',   name:'オオカミ', img:'ookami.jpg' },
+    { id:'hahabuta', name:'おやぶた',   img:'hahabuta.jpg' },
+    { id:'kobuta1',  name:'こぶた',   img:'kobuta1.jpg' },
+    { id:'kobuta2',  name:'こぶた2',  img:'kobuta2.jpg' },
+  ],
+  6: [
+    { id:'akazukin', name:'赤ずきん', img:'akazukin.jpg' },
+    { id:'ookami',   name:'オオカミ', img:'ookami.jpg' },
+    { id:'hahabuta', name:'おやぶた',   img:'hahabuta.jpg' },
+    { id:'kobuta1',  name:'こぶた',   img:'kobuta1.jpg' },
+    { id:'kobuta2',  name:'こぶた2',  img:'kobuta2.jpg' },
+    { id:'kobuta3',  name:'こぶた3',  img:'kobuta3.jpg' },
+  ],
+};
+
+function rolePointsByRoleId(roleId){
+  if (roleId === 'akazukin') return 3;
+  if (roleId === 'hahabuta') return 2;
+  if (String(roleId || '').startsWith('kobuta')) return 1;
+  return 0;
+}
+function getSingleRoleIdOfPlayer(pid, handsObj){
+  const cards = handsObj?.[pid]?.cards || [];
+  if (!Array.isArray(cards) || cards.length !== 1) return null;
+  return cards[0]?.id || null;
+}
+function findWolfId(handsObj){
+  for (const pid of Object.keys(handsObj || {})){
+    const rid = getSingleRoleIdOfPlayer(pid, handsObj);
+    if (rid === 'ookami') return pid;
+  }
+  return null;
+}
+function clamp0(n){ return Math.max(0, Number(n||0)); }
+
+function pickMostNegativePlayerId(deltas){
+  const entries = Object.entries(deltas || {}).map(([pid, d]) => [pid, Number(d||0)]);
+  const neg = entries.filter(([,d]) => d < 0);
+  if (!neg.length) return null;
+  neg.sort((a,b) => a[1] - b[1]);
+  return neg[0][0];
+}
+function sleepFor(ms){
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function getTagCenterByPlayerId(pid){
+  const el = document.querySelector(`[data-player-id="${pid}"]`);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width/2, y: r.top + r.height/2 };
+}
+
+/* ★ 正体カード名タグ削除：flyカードは画像のみ */
+function createFlyCard(role, x, y){
+  const d = document.createElement('div');
+  d.className = 'fly-card';
+  d.style.left = x + 'px';
+  d.style.top  = y + 'px';
+  d.innerHTML = `<img src="${role.img}" alt="${role.name}">`;
+  document.body.appendChild(d);
+  return d;
+}
+
+let redistributeAnimHandledToken = null;
+
+function getCardCentersForPlayer(pid){
+  if (pid === state.userId){
+    const els = Array.from(myHandEl.querySelectorAll('.my-card'));
+    if (els.length){
+      return els.map(el=>{
+        const r = el.getBoundingClientRect();
+        return { x:r.left + r.width/2, y:r.top + r.height/2 };
+      });
+    }
+  } else {
+    const wrap = document.querySelector(`.player-tag-wrap[data-player-id="${pid}"]`);
+    if (wrap){
+      const cards = Array.from(wrap.querySelectorAll('.mini-hand .mini-card'));
+      if (cards.length){
+        return cards.map(el=>{
+          const r = el.getBoundingClientRect();
+          return { x:r.left + r.width/2, y:r.top + r.height/2 };
+        });
+      }
+    }
+  }
+  const c = getTagCenterByPlayerId(pid);
+  return c ? [c] : [];
+}
+
+async function runRedistributeAllCardsAnimation(token, toPlayerId, handsObj){
+  if (!token || !toPlayerId) return;
+  await new Promise(r => requestAnimationFrame(()=>r()));
+
+  const end = getTagCenterByPlayerId(toPlayerId) || getTagCenterByPlayerId(state.userId);
+  if (!end) return;
+
+  const allFly = [];
+  const anims = [];
+
+  const entries = [];
+  for (const pid of Object.keys(handsObj || {})){
+    const cards = handsObj?.[pid]?.cards || [];
+    if (!Array.isArray(cards) || !cards.length) continue;
+
+    const centers = getCardCentersForPlayer(pid);
+    for (let i=0;i<cards.length;i++){
+      const role = cards[i];
+      const src = centers[i] || centers[centers.length-1] || getTagCenterByPlayerId(pid) || end;
+      entries.push({ role, src, idx: entries.length });
+    }
+  }
+
+  const baseDur = 620;
+  const stepDelay = 24;
+  const ease = 'cubic-bezier(.22,.84,.44,1)';
+
+  for (const item of entries){
+    const { role, src, idx } = item;
+    const fly = createFlyCard(role, src.x, src.y);
+    allFly.push(fly);
+
+    const delay = idx * stepDelay;
+    const a = fly.animate([
+      { left:`${src.x}px`, top:`${src.y}px`, transform:'translate(-50%,-50%) scale(1)', opacity: 1 },
+      { left:`${end.x}px`, top:`${end.y}px`, transform:'translate(-50%,-50%) scale(0.86)', opacity: 1 }
+    ], {
+      duration: baseDur,
+      delay,
+      easing: ease,
+      fill: 'forwards'
+    });
+
+    anims.push(a.finished);
+  }
+
+  await Promise.allSettled(anims);
+  allFly.forEach(el=>el.remove());
+}
+
+/* =========================================================
+   ★ 点数の「予定差分」を適用（クランプ込み）
+   ========================================================= */
+function applyIntendedDeltasToPoints(pointsObj, intendedDeltas){
+  const cur = structuredClone(pointsObj || {});
+  const applied = {};
+
+  for (const [pid, d] of Object.entries(intendedDeltas || {})){
+    const delta = Number(d || 0);
+    const before = clamp0(cur[pid] ?? 0);
+    const after  = clamp0(before + delta);
+    cur[pid] = after;
+    applied[pid] = after - before;
+  }
+  return { newPoints: cur, appliedDeltas: applied };
+}
+
+/* =========================================================
+   ★ NEW：アニメ後に「全カード→マイナス1人」集約し、配り直しへ
+   ========================================================= */
+let roundRedistributeHandledKey = null;
+
+async function redistributeAllCardsToNegativeOne_AfterAnimations(){
+  if (!state.roomCode) return;
+
+  const wr = state.room?.wolfResult;
+  if (!wr?.computed) return;
+
+  const key = String(wr.resolvedAt || '');
+  if (!key) return;
+  if (roundRedistributeHandledKey === key) return;
+
+  const roomSnap0 = await get(ref(db, `rooms/${state.roomCode}`));
+  const room0 = roomSnap0.val() || {};
+  const wolfResult0 = room0.wolfResult || {};
+  if (!wolfResult0?.computed) return;
+
+  const loserId = pickMostNegativePlayerId(wolfResult0.appliedDeltas || wolfResult0.intendedDeltas || wolfResult0.deltas || {});
+  if (!loserId) return;
+
+  const handsObj0 = room0.hands || {};
+  const allCards = [];
+  for (const pid of Object.keys(handsObj0)){
+    const arr = handsObj0?.[pid]?.cards || [];
+    if (Array.isArray(arr) && arr.length) allCards.push(...arr.map(c => ({...c})));
+  }
+
+  const newHands = {};
+  for (const pid of Object.keys(handsObj0)){
+    newHands[pid] = { cards: [] };
+  }
+  if (!newHands[loserId]) newHands[loserId] = { cards: [] };
+  newHands[loserId].cards = allCards;
+
+  const tokenRef = ref(db, `rooms/${state.roomCode}/roundCycle/token`);
+  const tx = await runTransaction(tokenRef, (cur) => cur ? cur : Date.now());
+  if (!tx.committed) return;
+
+  const token = tx.snapshot.val();
+  roundRedistributeHandledKey = key;
+
+  const base = `rooms/${state.roomCode}`;
+
+  await sleepFor(3000);
+
+  const roomSnap1 = await get(ref(db, `rooms/${state.roomCode}`));
+  const room1 = roomSnap1.val() || {};
+  const wolfResult1 = room1.wolfResult || {};
+  const intended = wolfResult1.intendedDeltas || {};
+  const pointsNow = room1.points || {};
+
+  const resolvedAtNow = wolfResult1.resolvedAt;
+  if (!resolvedAtNow) return;
+
+  const applyLockRef = ref(db, `rooms/${state.roomCode}/wolfResult/pointsAppliedAt`);
+  const applyLock = await runTransaction(applyLockRef, (cur) => cur ? cur : Date.now());
+
+  if (applyLock.committed) {
+    const { newPoints, appliedDeltas } = applyIntendedDeltasToPoints(pointsNow, intended);
+    await update(ref(db, base), {
+      points: newPoints,
+      "wolfResult/appliedDeltas": appliedDeltas
+    });
+  }
+
+  await update(ref(db, base), {
+    roundCycle: {
+      token,
+      phase: 'anim',
+      loserId,
+      fromResolvedAt: wolfResult1.resolvedAt || null,
+      startedAt: Date.now()
+    }
+  });
+
+  const patch = {};
+  patch[`${base}/hands`] = newHands;
+  patch[`${base}/dealerId`] = loserId;
+
+  patch[`${base}/sleep`] = null;
+  patch[`${base}/confirm`] = null;
+  patch[`${base}/wolfChoice`] = null;
+  patch[`${base}/wolfResult`] = null;
+
+  patch[`${base}/roundCycle/phase`] = 'done';
+  patch[`${base}/roundCycle/redistributedAt`] = Date.now();
+  patch[`${base}/roundCycle/lastLoserId`] = loserId;
+
+  await update(ref(db), patch);
+
+  prevHandsSnapshot = structuredClone(newHands);
+
+  wolfAnimHandledChosenId = null;
+  clearWolfOverlay();
+  playerCircle.classList.remove('wolf-reveal');
+}
+
+/* =========================================================
+   ★ 狼の選択確定後：点数は“今すぐ更新しない”
+   ========================================================= */
+async function maybeResolveWolfOutcome(){
+  if (!state.roomCode) return;
+
+  const chosenId = state.room?.wolfChoice?.chosenId;
+  if (!chosenId) return;
+
+  if (state.room?.wolfResult?.resolvedAt) return;
+
+  const lockRef = ref(db, `rooms/${state.roomCode}/wolfResult/resolvedAt`);
+  const lock = await runTransaction(lockRef, (cur) => cur ? cur : Date.now());
+  if (!lock.committed) return;
+
+  const resolvedAt = lock.snapshot.val();
+
+  const roomSnap = await get(ref(db, `rooms/${state.roomCode}`));
+  const room = roomSnap.val() || {};
+  if (room?.wolfResult?.computed) return;
+
+  const handsObj = room.hands || {};
+  const sleepObj = room.sleep || {};
+
+  const wolfId = findWolfId(handsObj);
+  if (!wolfId) return;
+
+  const chosenRoleId = getSingleRoleIdOfPlayer(chosenId, handsObj);
+  const chosenPts = rolePointsByRoleId(chosenRoleId);
+  const chosenFace = sleepObj?.[chosenId]?.face || 'omote';
+
+  const intendedDeltas = {};
+  function addIntended(pid, delta){
+    if (!pid) return;
+    intendedDeltas[pid] = (intendedDeltas[pid] || 0) + Number(delta || 0);
+  }
+
+  for (const pid of Object.keys(handsObj)){
+    if (pid === wolfId) continue;
+    if (pid === chosenId) continue;
+
+    const rid = getSingleRoleIdOfPlayer(pid, handsObj);
+    if (!rid || rid === 'ookami') continue;
+
+    const face = sleepObj?.[pid]?.face || 'omote';
+    if (face !== 'omote') continue;
+
+    addIntended(pid, rolePointsByRoleId(rid));
+  }
+
+  if (chosenId && chosenId !== wolfId){
+    if (chosenFace === 'omote'){
+      addIntended(wolfId, +chosenPts);
+      addIntended(chosenId, -chosenPts);
+    } else {
+      addIntended(chosenId, +chosenPts);
+      addIntended(wolfId, -chosenPts);
+    }
+  }
+
+  const base = `rooms/${state.roomCode}`;
+  const patch = {};
+  patch[`${base}/wolfResult`] = {
+    resolvedAt,
+    computed: true,
+    wolfId,
+    chosenId,
+    chosenFace,
+    chosenRoleId,
+    chosenPts,
+    intendedDeltas,
+    appliedDeltas: null
+  };
+
+  patch[`${base}/roundCycle/token`] = null;
+  patch[`${base}/roundCycle/redistributedAt`] = null;
+  patch[`${base}/roundCycle/phase`] = null;
+
+  await update(ref(db), patch);
+}
+
+/* =========================================================
+   ★ 役職ヘルプ
+   ========================================================= */
+function getRoleSetForCurrentRoom(){
+  const mp = state.room?.maxPlayers;
+  const n = Number(mp) || 0;
+  return ROLE_SETS[n] || [];
+}
+function renderHelpList(){
+  const roles = getRoleSetForCurrentRoom();
+  helpBody.innerHTML = '';
+  if (!roles.length){
+    helpBody.innerHTML = '<div style="font-size:13px;opacity:.75;">人数が未設定です（ホストが人数を選択してください）</div>';
+    return;
+  }
+  roles.forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'role-row';
+
+    const card = document.createElement('div');
+    card.className = 'role-card';
+    const img = document.createElement('img');
+    img.src = r.img;
+    img.alt = r.name;
+    card.appendChild(img);
+
+    const desc = document.createElement('div');
+    desc.className = 'role-desc';
+    desc.innerHTML = `
+      <div class="name">${r.name}</div>
+    `;
+
+    row.appendChild(card);
+    row.appendChild(desc);
+    helpBody.appendChild(row);
+  });
+}
+function openHelp(){
+  renderHelpList();
+  helpBackdrop.classList.remove('hidden');
+}
+function closeHelp(){
+  helpBackdrop.classList.add('hidden');
+}
+helpBtn.addEventListener('click', () => {
+  if (joinBox.classList.contains('hidden')) openHelp();
+});
+btnHelpClose.addEventListener('click', closeHelp);
+helpBackdrop.addEventListener('click', (e) => {
+  if (e.target === helpBackdrop) closeHelp();
+});
+
+let pendingSeatIndexToSteal = null;
+let pendingSeatPlayerIdToSteal = null;
+let isRenderingSeatTabs = false;
+let latestPlayers = [];
+
+/* =========================================================
+   ★ 決定 / 狼フェーズ（DB同期）
+   ========================================================= */
+function myCards(){
+  return state.hands?.[state.userId]?.cards || [];
+}
+function mySingleRole(){
+  const cards = myCards();
+  if (!Array.isArray(cards) || cards.length !== 1) return null;
+  return cards[0] || null;
+}
+function isWolfPlayerId(pid){
+  const cards = state.hands?.[pid]?.cards || [];
+  return Array.isArray(cards) && cards.length === 1 && cards[0]?.id === 'ookami';
+}
+function isNonWolfSingle(pid){
+  const cards = state.hands?.[pid]?.cards || [];
+  return Array.isArray(cards) && cards.length === 1 && cards[0]?.id && cards[0].id !== 'ookami';
+}
+function isMyConfirmed(){
+  return !!(state.room?.confirm?.[state.userId]);
+}
+async function setMyConfirmed(){
+  if (!state.roomCode) return;
+  await set(ref(db, `rooms/${state.roomCode}/confirm/${state.userId}`), true);
+}
+function allNonWolfConfirmed(players){
+  const confirm = state.room?.confirm || {};
+  for (const p of (players || [])){
+    if (isNonWolfSingle(p.id)){
+      if (!confirm[p.id]) return false;
+    }
+  }
+  const anyNonWolf = (players || []).some(p => isNonWolfSingle(p.id));
+  return anyNonWolf;
+}
+function wolfSelectionMode(){
+  const me = mySingleRole();
+  if (!me || me.id !== 'ookami') return false;
+  if (!allNonWolfConfirmed(latestPlayers)) return false;
+  const chosen = state.room?.wolfChoice?.chosenId;
+  return !chosen;
+}
+function revealMode(){
+  return !!state.room?.wolfChoice?.chosenId;
+}
+async function chooseWolfTarget(toPlayerId){
+  if (!state.roomCode) return;
+  await set(ref(db, `rooms/${state.roomCode}/wolfChoice`), {
+    chosenId: toPlayerId,
+    chosenAt: Date.now()
+  });
+}
+
+/* 決定ボタン表示更新 */
+function shouldHaveSleepByCards(cards){
+  if (!Array.isArray(cards)) return false;
+  if (cards.length !== 1) return false;
+  const c = cards[0];
+  if (!c) return false;
+  return c.id !== 'ookami';
+}
+function renderDecideBtn(){
+  const role = mySingleRole();
+  if (!state.roomCode || state.seatedTable === null || !role){
+    decideBtn.classList.remove('visible');
+    return;
+  }
+  if (role.id === 'ookami'){
+    decideBtn.classList.remove('visible');
+    return;
+  }
+  if (!shouldHaveSleepByCards(myCards())){
+    decideBtn.classList.remove('visible');
+    return;
+  }
+
+  const confirmed = isMyConfirmed();
+  if (confirmed){
+    decideBtn.classList.remove('visible');
+    return;
+  }
+
+  decideBtn.classList.add('visible');
+  decideBtn.classList.remove('done');
+
+  decideBtn.classList.remove('red','brown');
+  if (role.id === 'akazukin') decideBtn.classList.add('red');
+  else decideBtn.classList.add('brown');
+
+  decideBtn.textContent = '決定';
+}
+decideBtn.addEventListener('click', async () => {
+  if (decideBtn.classList.contains('done')) return;
+  const role = mySingleRole();
+  if (!role || role.id === 'ookami') return;
+  await setMyConfirmed();
+});
+
+/* =========================================================
+   ★ ポイント（初期は全員3点）
+   ========================================================= */
+async function ensureMyPoints(){
+  if (!state.roomCode) return;
+  const pRef = ref(db, `rooms/${state.roomCode}/points/${state.userId}`);
+  const snap = await get(pRef);
+  if (snap.exists()) return;
+  await set(pRef, 3);
+}
+function subscribePoints(){
+  if (!state.roomCode) return;
+  const pRoot = ref(db, `rooms/${state.roomCode}/points`);
+  onValue(pRoot, snap => {
+    state.room.points = snap.val() || {};
+    if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+  });
+}
+
+/* =========================================================
+   ★ sleepcard（配布/状態）
+   ========================================================= */
+function getMySleepFace(){
+  const entry = state.room?.sleep?.[state.userId];
+  return entry?.face || 'omote';
+}
+async function toggleMySleep(){
+  if (!state.roomCode) return;
+  if (isMyConfirmed()) return;
+  const myCards2 = state.hands?.[state.userId]?.cards || [];
+  if (!shouldHaveSleepByCards(myCards2)) return;
+
+  const cur = getMySleepFace();
+  const next = (cur === 'omote') ? 'ura' : 'omote';
+  await update(ref(db, `rooms/${state.roomCode}/sleep/${state.userId}`), {
+    face: next,
+    updatedAt: Date.now()
+  });
+}
+
+/* =========================================================
+   ★ 受け渡し（otherPlayerArea へのドラッグ）
+   ========================================================= */
+const DEAL_KEY = 'dealerId';
+
+function isDealer(){
+  return state.room && state.room[DEAL_KEY] && state.room[DEAL_KEY] === state.userId;
+}
+function myCardCount(){
+  const my = state.hands?.[state.userId];
+  return (my && Array.isArray(my.cards)) ? my.cards.length : 0;
+}
+function targetCanReceive(toPlayerId){
+  const to = state.hands?.[toPlayerId];
+  const cnt = (to && Array.isArray(to.cards)) ? to.cards.length : 0;
+  return cnt === 0;
+}
+function canTransferNow(){
+  return isDealer() && myCardCount() >= 2;
+}
+function canDropTo(toPlayerId){
+  if (!toPlayerId) return false;
+  if (toPlayerId === state.userId) return false;
+  if (!targetCanReceive(toPlayerId)) return false;
+  return true;
+}
+
+async function transferCardToPlayer(role, toPlayerId){
+  if (!state.roomCode) return false;
+
+  const fromId = state.userId;
+  const base = `rooms/${state.roomCode}`;
+  const handsPath = `${base}/hands`;
+  const sleepPath = `${base}/sleep`;
+
+  const handsSnap = await get(ref(db, handsPath));
+  const hands = handsSnap.val() || {};
+  const fromHand = hands[fromId] || { cards: [] };
+  const toHand   = hands[toPlayerId] || { cards: [] };
+
+  if ((fromHand.cards || []).length <= 1) return false;
+  if ((toHand.cards || []).length >= 1) return false;
+
+  const idx = (fromHand.cards || []).findIndex(c => c && c.id === role.id);
+  if (idx === -1) return false;
+
+  const [removed] = fromHand.cards.splice(idx, 1);
+  toHand.cards.push(removed);
+
+  const sleepSnap = await get(ref(db, sleepPath));
+  const sleep = sleepSnap.val() || {};
+
+  function computeSleepEntry(pid, cards){
+    const should = shouldHaveSleepByCards(cards);
+    if (!should) return null;
+    return sleep[pid] || { face:'omote' };
+  }
+
+  const patch = {};
+  patch[`${handsPath}/${fromId}`] = fromHand;
+  patch[`${handsPath}/${toPlayerId}`] = toHand;
+
+  patch[`${sleepPath}/${fromId}`] = computeSleepEntry(fromId, fromHand.cards);
+  patch[`${sleepPath}/${toPlayerId}`] = computeSleepEntry(toPlayerId, toHand.cards);
+
+  await update(ref(db), patch);
+  return true;
+}
+
+/* ★ ミニカード表示を「アニメ終了後」にするための遅延レンダー */
+let deferMiniRenderUntil = 0;
+let deferMiniHideKey = null;
+function scheduleMiniRenderAfter(ms){
+  deferMiniRenderUntil = performance.now() + ms;
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+}
+
+let prevHandsSnapshot = {};
+
+function keyForCard(c){
+  if (!c) return '';
+  return `${c.id || ''}|${c.img || ''}|${c.name || ''}`;
+}
+function countCards(cards){
+  const m = new Map();
+  (cards || []).forEach(c=>{
+    const k = keyForCard(c);
+    m.set(k, (m.get(k)||0)+1);
+  });
+  return m;
+}
+function detectSingleTransfer(prevHands, nextHands){
+  const players = new Set([
+    ...Object.keys(prevHands || {}),
+    ...Object.keys(nextHands || {})
+  ]);
+
+  let fromId = null, toId = null, movedCard = null;
+
+  for (const pid of players){
+    const prev = prevHands?.[pid]?.cards || [];
+    const next = nextHands?.[pid]?.cards || [];
+    const prevMap = countCards(prev);
+    const nextMap = countCards(next);
+
+    const keys = new Set([...prevMap.keys(), ...nextMap.keys()]);
+    for (const k of keys){
+      const d = (nextMap.get(k)||0) - (prevMap.get(k)||0);
+      if (d === -1){
+        if (fromId) return null;
+        fromId = pid;
+        movedCard = prev.find(c => keyForCard(c) === k) || movedCard;
+      } else if (d === +1){
+        if (toId) return null;
+        toId = pid;
+      } else if (d !== 0){
+        return null;
+      }
+    }
+  }
+
+  if (!fromId || !toId || !movedCard) return null;
+  if (fromId === toId) return null;
+  return { fromId, toId, card: movedCard };
+}
+
+function animateTagToTag(role, fromPlayerId, toPlayerId){
+  const a = getTagCenterByPlayerId(fromPlayerId);
+  const b = getTagCenterByPlayerId(toPlayerId);
+  if (!a || !b) return;
+
+  const fly = createFlyCard(role, a.x, a.y);
+  const start = performance.now();
+  const dur = 520;
+
+  deferMiniHideKey = keyForCard(role);
+  scheduleMiniRenderAfter(dur);
+
+  const ease = (t)=> t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+
+  function step(now){
+    const t = Math.min(1, (now-start)/dur);
+    const e = ease(t);
+    const x = a.x + (b.x-a.x)*e;
+    const y = a.y + (b.y-a.y)*e;
+    fly.style.left = x + 'px';
+    fly.style.top  = y + 'px';
+    fly.style.transform = `translate(-50%,-50%) scale(${1 - 0.08*t})`;
+    if (t < 1) requestAnimationFrame(step);
+    else {
+      fly.remove();
+      deferMiniRenderUntil = 0;
+      deferMiniHideKey = null;
+      if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+    }
+  }
+  requestAnimationFrame(step);
+}
+function animateTransferForThisClient(role, fromPlayerId, toPlayerId){
+  if (state.userId === fromPlayerId) return;
+  animateTagToTag(role, fromPlayerId, toPlayerId);
+}
+
+function subscribeHands(){
+  const handsRef = ref(db, `rooms/${state.roomCode}/hands`);
+  onValue(handsRef, snap => {
+    const nextHands = snap.val() || {};
+
+    const info = detectSingleTransfer(prevHandsSnapshot, nextHands);
+    if (info){
+      animateTransferForThisClient(info.card, info.fromId, info.toId);
+    }
+
+    prevHandsSnapshot = structuredClone(nextHands);
+    state.hands = nextHands;
+
+    renderHands();
+  });
+}
+
+/* =========================================================
+   ★ 狼の演出
+   ========================================================= */
+let wolfAnimHandledChosenId = null;
+let wolfOverlayEl = null;
+
+const WOLF_LAND_OFFSET_X = 28;
+const WOLF_LAND_OFFSET_Y = 24; 
+function getMiniIdentityCardCenter(pid){
+  const wrap = document.querySelector(`.player-tag-wrap[data-player-id="${pid}"]`);
+  if (!wrap) return null;
+  const card = wrap.querySelector('.mini-card[data-kind="identity"]');
+  if (!card) return null;
+  const r = card.getBoundingClientRect();
+  return { x: r.left + r.width/2, y: r.top + r.height/2, w: r.width, h: r.height };
+}
+function getWolfRoleImage(){
+  const wolfId = findWolfId(state.hands || {});
+  if (!wolfId) return 'ookami.jpg';
+  const c = state.hands?.[wolfId]?.cards?.[0];
+  return c?.img || 'ookami.jpg';
+}
+function clearWolfOverlay(){
+  if (wolfOverlayEl){
+    wolfOverlayEl.remove();
+    wolfOverlayEl = null;
+  }
+}
+
+async function runWolfPickAnimationIfNeeded(){
+  const chosenId = state.room?.wolfChoice?.chosenId;
+  if (!chosenId) return;
+
+  if (wolfAnimHandledChosenId === chosenId) return;
+
+  await new Promise(r => requestAnimationFrame(()=>r()));
+
+  const wolfId = findWolfId(state.hands || {});
+  const to = getMiniIdentityCardCenter(chosenId);
+  if (!to) return;
+
+  wolfAnimHandledChosenId = chosenId;
+
+  playerCircle.classList.remove('wolf-reveal');
+
+  clearWolfOverlay();
+
+  const el = document.createElement('div');
+  el.className = 'wolf-pick-card';
+  el.innerHTML = `<img src="${getWolfRoleImage()}" alt="ookami">`;
+  document.body.appendChild(el);
+  wolfOverlayEl = el;
+
+  const from = wolfId ? getMiniIdentityCardCenter(wolfId) : null;
+  const start = from || getTagCenterByPlayerId(wolfId) || { x: to.x, y: to.y - 40 };
+
+  const end = { x: to.x + WOLF_LAND_OFFSET_X, y: to.y + WOLF_LAND_OFFSET_Y };
+
+  el.style.left = start.x + 'px';
+  el.style.top  = start.y + 'px';
+
+  await el.animate([
+    { left:`${start.x}px`, top:`${start.y}px`, transform:'translate(-50%,-50%) rotate(0deg) scale(1)' },
+    { left:`${end.x}px`,   top:`${end.y}px`,   transform:'translate(-50%,-50%) rotate(0deg) scale(1)' }
+  ], {
+    duration: 420,
+    easing: 'cubic-bezier(.22,.84,.44,1)',
+    fill: 'forwards'
+  }).finished;
+
+  await el.animate([
+    { transform:'translate(-50%,-50%) rotate(0deg)' },
+    { transform:'translate(-50%,-50%) rotate(-6deg)' },
+    { transform:'translate(-50%,-50%) rotate(6deg)' },
+    { transform:'translate(-50%,-50%) rotate(-5deg)' },
+    { transform:'translate(-50%,-50%) rotate(5deg)' },
+    { transform:'translate(-50%,-50%) rotate(0deg)' }
+  ], {
+    duration: 340,
+    easing: 'ease-in-out',
+    fill: 'forwards'
+  }).finished;
+
+  playerCircle.classList.add('wolf-reveal');
+  await sleepFor(380);
+
+  const face = state.room?.sleep?.[chosenId]?.face || 'omote';
+
+  if (face === 'ura'){
+    await sleepFor(2000);
+
+    const L = end.x;
+    const T = end.y;
+    const fallToTop = T + window.innerHeight * 1.25;
+
+    el.style.left = L + 'px';
+    el.style.top  = T + 'px';
+
+    await el.animate([
+      { left:`${L}px`, top:`${T}px`, transform:'translate(-50%,-50%) rotate(0deg)' },
+      { left:`${L}px`, top:`${T}px`, transform:'translate(-50%,-50%) rotate(175deg)' }
+    ], {
+      duration: 220,
+      easing: 'linear',
+      fill: 'forwards'
+    }).finished;
+
+    await el.animate([
+      { left:`${L}px`, top:`${T}px`, transform:'translate(-50%,-50%) rotate(175deg)', opacity: 1 },
+      { left:`${L}px`, top:`${fallToTop}px`, transform:'translate(-50%,-50%) rotate(175deg)', opacity: 1 }
+    ], {
+      duration: 2300,
+      easing: 'linear',
+      fill: 'forwards'
+    }).finished;
+
+    await redistributeAllCardsToNegativeOne_AfterAnimations();
+  } else {
+    await sleepFor(1500);
+    await redistributeAllCardsToNegativeOne_AfterAnimations();
+  }
+}
+
+/* =========================================================
+   ★ UIレンダー
+   ========================================================= */
+function renderMyHand(){
+  myHandEl.innerHTML = '';
+  const myId = state.userId;
+  const handData = state.hands[myId];
+  if (!handData || !Array.isArray(handData.cards)) return;
+
+  const canTransfer = canTransferNow();
+  const pulsingRoles = isDealer() && canTransfer;
+
+  handData.cards.forEach(role => {
+    const card = document.createElement('div');
+
+    const noTransferClass = (isDealer() && !canTransfer) ? ' no-transfer' : '';
+    card.className = 'my-card' + (pulsingRoles ? ' pulsing' : '') + noTransferClass;
+
+    /* ★ 正体カード名タグ削除：labelを作らない */
+    card.innerHTML = `<img src="${role.img}" alt="${role.name}">`;
+
+    if (pulsingRoles){
+      card.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        startDrag(role, e);
+      });
+    } else {
+      card.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+    }
+
+    myHandEl.appendChild(card);
+  });
+
+  const shouldSleep = shouldHaveSleepByCards(handData.cards);
+  if (shouldSleep){
+    const face = getMySleepFace();
+    const img = (face === 'ura') ? SLEEP_BACK : SLEEP_FRONT;
+
+    const confirmed = isMyConfirmed();
+
+    const s = document.createElement('div');
+    s.className = 'sleep-card' + (confirmed ? ' disabled' : ' pulsing');
+
+    /* ★ スリープカード名タグ削除：sleep-badgeを作らない */
+    s.innerHTML = `<img src="${img}" alt="sleepcard">`;
+
+    if (!confirmed){
+      s.addEventListener('click', async () => {
+        await toggleMySleep();
+      });
+    }
+    myHandEl.appendChild(s);
+  }
+}
+
+function renderHands(){
+  renderMyHand();
+  if (latestPlayers.length) renderPlayerCircle(latestPlayers);
+  renderDecideBtn();
+
+  runWolfPickAnimationIfNeeded();
+}
+
+/* =========================================================
+   ★ 既存：入室/席/表示
+   ========================================================= */
+function generateRoomCode(length = 6){
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for(let i=0;i<length;i++) code += chars.charAt(Math.floor(Math.random()*chars.length));
+  return code;
+}
+
+async function restoreSeatFromDB(){
+  if (!state.roomCode) return;
+  const tablesRef = ref(db, `rooms/${state.roomCode}/tables`);
+  const snap = await get(tablesRef);
+  const data = snap.val() || {};
+  let mySeatIndex = null;
+
+  for (const [seatIndex, t] of Object.entries(data)) {
+    if (t && t.playerId === state.userId) {
+      mySeatIndex = Number(seatIndex);
+      break;
+    }
+  }
+  if (mySeatIndex !== null) state.seatedTable = mySeatIndex;
+}
+
+function refreshRoomLabels(){
+  if (!state.roomCode || !state.userName) return;
+  const label = state.isHost ? '（ホスト）' : '';
+  const infoText = ` ${state.roomCode},  ${state.userName}${label}`;
+  roomInfo.textContent = infoText;
+  roomInfoLobby.textContent = infoText;
+}
+
+function updateHostUI(){
+  refreshRoomLabels();
+  if (state.isHost){
+    hostSettingsBtn.classList.add('visible');
+  } else {
+    hostSettingsBtn.classList.remove('visible');
+    startPop.classList.add('hidden');
+  }
+  helpBtn.classList.add('visible');
+}
+
+function subscribeRoom(){
+  const roomRef = ref(db, `rooms/${state.roomCode}`);
+  onValue(roomRef, async snap => {
+    state.room = snap.val() || {};
+    const waiting = (!state.isHost && !state.room.maxPlayers);
+    hostSelectingPop.classList.toggle('hidden', !waiting);
+    syncSeatUI();
+    renderHands();
+
+    const rc = state.room?.roundCycle || null;
+    if (rc?.phase === 'anim' && rc?.token && rc?.loserId){
+      if (redistributeAnimHandledToken !== rc.token){
+        redistributeAnimHandledToken = rc.token;
+        const handsObj = state.room?.hands || state.hands || {};
+        await runRedistributeAllCardsAnimation(rc.token, rc.loserId, handsObj);
+      }
+    }
+
+    if (state.room?.wolfChoice?.chosenId && !state.room?.wolfResult?.resolvedAt){
+      await maybeResolveWolfOutcome();
+    }
+  });
+}
+
+function subscribeHostState(){
+  const hostRef = ref(db, `rooms/${state.roomCode}/hostId`);
+  onValue(hostRef, snap => {
+    const hostId = snap.val();
+    state.isHost = (hostId === state.userId);
+    updateHostUI();
+    syncSeatUI();
+  });
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const roomFromUrl = urlParams.get('room');
+if(roomFromUrl) inputCode.value = roomFromUrl;
+
+btnJoin.addEventListener('click', async () => {
+  state.userName = inputName.value || '名無し';
+  state.roomCode = inputCode.value.trim() || generateRoomCode();
+
+  await set(ref(db, `rooms/${state.roomCode}/users/${state.userId}`), {
+    name: state.userName,
+    joinedAt: Date.now()
+  });
+
+  const roomRef = ref(db, `rooms/${state.roomCode}`);
+  const roomSnap = await get(roomRef);
+  const roomData = roomSnap.val();
+
+  if(!roomData || !roomData.hostId){
+    await update(roomRef, { hostId: state.userId });
+    state.isHost = true;
+  } else {
+    state.isHost = (roomData.hostId === state.userId);
+  }
+
+  updateHostUI();
+
+  mainEl.classList.remove('prejoin');
+  mainEl.classList.add('joined');
+
+  joinBox.classList.add('hidden');
+  lobby.classList.remove('hidden');
+  lobby.classList.add('entered');
+
+  await restoreSeatFromDB();
+
+  subscribeRoom();
+  subscribeHostState();
+  subscribePlayers();
+  subscribeHands();
+  subscribePoints();
+
+  await ensureMyPoints();
+
+  syncSeatUI();
+});
+
+copyLinkBtn.addEventListener('click', async () => {
+  const url = `${location.origin}${location.pathname}?room=${state.roomCode}`;
+  try {
+    await navigator.clipboard.writeText(url);
+    copyLinkBtn.classList.add('copied');
+    copyLinkBtn.textContent = 'COPIED';
+    inputCode.value = state.roomCode;
+    setTimeout(()=>{
+      copyLinkBtn.classList.remove('copied');
+      copyLinkBtn.textContent='COPY';
+    },1500);
+  } catch {
+    prompt('コピーできません。手動でコピーしてください', url);
+  }
+});
+
+async function syncSeatUI(){
+  if (!state.roomCode) return;
+
+  const maxPlayers = state.room.maxPlayers || null;
+
+  if (!state.isHost && !maxPlayers){
+    seatPop.classList.add('hidden');
+    return;
+  }
+  if (state.seatedTable !== null){
+    seatPop.classList.add('hidden');
+    return;
+  }
+  await renderSeatTabs();
+  seatPop.classList.remove('hidden');
+}
+
+async function renderSeatTabs(){
+  if (!state.roomCode) return;
+  if (isRenderingSeatTabs) return;
+  isRenderingSeatTabs = true;
+
+  try {
+    seatTabs.innerHTML = '';
+
+    const roomRef = ref(db, `rooms/${state.roomCode}`);
+    const roomSnap = await get(roomRef);
+    const roomData = roomSnap.val() || {};
+    const maxPlayers = roomData.maxPlayers || null;
+
+    if(state.isHost && !maxPlayers){
+      seatLabel.textContent = '人数を選択';
+      for(let i=2; i<=8; i++){
+        const tab = document.createElement('div');
+        tab.className = 'tab';
+        tab.textContent = i;
+
+        tab.onclick = async () => {
+          await update(roomRef, { maxPlayers: i });
+          const tRef = ref(db, `rooms/${state.roomCode}/tables/1`);
+          await set(tRef, { playerId: state.userId, playerName: state.userName });
+
+          state.seatedTable = 1;
+          seatPop.classList.add('hidden');
+        };
+        seatTabs.appendChild(tab);
+      }
+      return;
+    }
+
+    seatLabel.textContent = '席を選択';
+
+    const effectiveMax = maxPlayers || 8;
+    const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+    const tables = tablesSnap.val() || {};
+
+    for(let i=1; i<=effectiveMax; i++){
+      const tab = document.createElement('div');
+      tab.className = 'tab';
+      tab.textContent = i;
+
+      const t = tables[i];
+      if(t && t.playerId) tab.classList.add('disabled');
+
+      tab.onclick = async () => {
+        if(tab.classList.contains('disabled')) return;
+        const tRef = ref(db, `rooms/${state.roomCode}/tables/${i}`);
+        await set(tRef, { playerId: state.userId, playerName: state.userName });
+        state.seatedTable = i;
+        seatPop.classList.add('hidden');
+      };
+      seatTabs.appendChild(tab);
+    }
+  } finally {
+    isRenderingSeatTabs = false;
+  }
+}
+
+btnSeatCancel.onclick = () => {
+  seatPop.classList.add('hidden');
+  state.seatedTable = null;
+};
+
+function subscribePlayers(){
+  const tablesRef = ref(db, `rooms/${state.roomCode}/tables`);
+  onValue(tablesRef, async snap => {
+    const data = snap.val() || {};
+    const players = Object.entries(data)
+      .map(([seatIndex, t]) => (t && t.playerId ? {
+        id: t.playerId,
+        name: t.playerName || '名無し',
+        seatIndex: Number(seatIndex)
+      } : null))
+      .filter(Boolean)
+      .sort((a,b) => a.seatIndex - b.seatIndex);
+
+    latestPlayers = players;
+
+    const mySeat = players.find(p => p.id === state.userId);
+    if (mySeat && state.seatedTable === null) {
+      state.seatedTable = mySeat.seatIndex;
+      seatPop.classList.add('hidden');
+    }
+
+    const meStillSeated = players.some(p => p.id === state.userId);
+    if (!meStillSeated && state.seatedTable !== null) {
+      state.seatedTable = null;
+    }
+
+    await syncSeatUI();
+    renderPlayerCircle(players);
+    renderDecideBtn();
+
+    runWolfPickAnimationIfNeeded();
+  });
+}
+
+/* 表示は「合計点」から hearts=floor(p/5), chips=p%5 */
+function makePointChips(pointsTotal){
+  const wrap = document.createElement('div');
+  wrap.className = 'point-chips';
+
+  const p = clamp0(pointsTotal || 0);
+  const hearts = Math.floor(p / 5);
+  const rem = p % 5;
+
+  for (let i=0;i<hearts;i++){
+    const h = document.createElement('div');
+    h.className = 'heart';
+    wrap.appendChild(h);
+  }
+  for (let i=0;i<rem;i++){
+    const c = document.createElement('div');
+    c.className = 'chip';
+    wrap.appendChild(c);
+  }
+  return wrap;
+}
+
+function renderPlayerCircle(players){
+  playerCircle.innerHTML = '';
+  if (!players.length) return;
+
+  if (!revealMode()) {
+    playerCircle.classList.remove('wolf-reveal');
+    wolfAnimHandledChosenId = null;
+    clearWolfOverlay();
+  }
+
+  const n = players.length;
+  const radius = 45;
+  const step = (2 * Math.PI) / n;
+  const anchorAngle = Math.PI / 2;
+  const meIndex = players.findIndex(p => p.id === state.userId);
+
+  const showDropDeny = isDealer() && canTransferNow();
+  const wolfSel = wolfSelectionMode();
+
+  players.forEach((p, idx) => {
+    const k = (meIndex === -1) ? idx : (idx - meIndex + n) % n;
+    const angle = anchorAngle + step * k;
+
+    const x = 50 + radius * Math.cos(angle);
+    const y = 50 + radius * Math.sin(angle);
+
+    if (p.id !== state.userId){
+      const ring = document.createElement('div');
+      ring.className = 'other-area';
+      ring.style.left = `${x}%`;
+      ring.style.top  = `${y}%`;
+      ring.setAttribute('data-player-id', p.id);
+
+      if (showDropDeny && !targetCanReceive(p.id)){
+        ring.classList.add('drop-deny');
+      }
+
+      playerCircle.appendChild(ring);
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'player-tag-wrap';
+    wrap.style.left = `${x}%`;
+    wrap.style.top  = `${y}%`;
+    wrap.setAttribute('data-player-id', p.id);
+
+    const tag = document.createElement('div');
+    tag.className = 'player-tag' + (p.id === state.userId ? ' me' : '');
+
+    if (isWolfPlayerId(p.id)){
+      tag.classList.add('wolf-me');
+    }
+
+    if (wolfSel && p.id !== state.userId){
+      tag.classList.add('wolf-pulse');
+    }
+
+    tag.textContent = p.name;
+
+    tag.onclick = async () => {
+      if (wolfSel) return;
+      if (p.id === state.userId) return;
+      if (!state.roomCode) return;
+      if (state.seatedTable !== null) return;
+
+      pendingSeatIndexToSteal = p.seatIndex;
+      pendingSeatPlayerIdToSteal = p.id;
+      kickMessage.textContent = `「${p.name}」を追い出して、この席に着席しますか？`;
+      kickDialog.classList.remove('hidden');
+    };
+
+    const handData = state.hands[p.id];
+    const now = performance.now();
+    const shouldDefer = (deferMiniRenderUntil && now < deferMiniRenderUntil);
+
+    if (p.id !== state.userId && handData && Array.isArray(handData.cards) && handData.cards.length){
+      const miniHand = document.createElement('div');
+      miniHand.className = 'mini-hand';
+
+      const cardsArr = handData.cards;
+      let visibleCards = cardsArr.slice();
+
+      if (shouldDefer && deferMiniHideKey){
+        const ix = visibleCards.findIndex(c => keyForCard(c) === deferMiniHideKey);
+        if (ix >= 0) visibleCards.splice(ix, 1);
+      }
+
+      const hasSleep = shouldHaveSleepByCards(handData.cards);
+      if (hasSleep){
+        const face = state.room?.sleep?.[p.id]?.face || 'omote';
+        const img  = (face === 'ura') ? SLEEP_BACK : SLEEP_FRONT;
+
+        const ms = document.createElement('div');
+        ms.className = 'mini-sleep';
+        ms.innerHTML = `<img src="${img}" alt="sleep(${face})">`;
+        miniHand.appendChild(ms);
+      }
+
+      const count = visibleCards.length;
+      if (count > 0){
+        const spread = 70;
+        const base = (count > 1) ? (-spread/2) : 0;
+
+        for (let idx2=0; idx2<count; idx2++){
+          const role = visibleCards[idx2];
+
+          const card = document.createElement('div');
+          card.className = 'mini-card';
+          card.setAttribute('data-kind','identity');
+
+          if (role?.img){
+            card.innerHTML = `<img src="${role.img}" alt="${role.name || ''}">`;
+          } else {
+            card.textContent = '';
+          }
+
+          const angleDeg = (count > 1) ? base + (spread/(count-1))*idx2 : 0;
+          card.style.transform = `translate(-50%,0) rotate(${angleDeg}deg)`;
+          card.style.zIndex = String(10 + idx2);
+
+          if (wolfSel && p.id !== state.userId){
+            card.addEventListener('click', async (ev) => {
+              ev.stopPropagation();
+              await chooseWolfTarget(p.id);
+            });
+          }
+
+          miniHand.appendChild(card);
+        }
+
+        tag.appendChild(miniHand);
+      }
+    }
+
+    const ptsTotal = (state.room.points && state.room.points[p.id] != null) ? state.room.points[p.id] : 3;
+    const chipWrap = makePointChips(ptsTotal);
+
+    wrap.appendChild(tag);
+    wrap.appendChild(chipWrap);
+    playerCircle.appendChild(wrap);
+  });
+
+  runWolfPickAnimationIfNeeded();
+}
+
+/* =========================================================
+   追い出し既存
+   ========================================================= */
+kickDialog.addEventListener('click', (e) => {
+  if (e.target === kickDialog) {
+    kickDialog.classList.add('hidden');
+    pendingSeatIndexToSteal = null;
+    pendingSeatPlayerIdToSteal = null;
+  }
+});
+btnKickNo.addEventListener('click', (e) => {
+  e.stopPropagation();
+  kickDialog.classList.add('hidden');
+  pendingSeatIndexToSteal = null;
+  pendingSeatPlayerIdToSteal = null;
+});
+btnKickYes.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (pendingSeatIndexToSteal == null || !state.roomCode) {
+    kickDialog.classList.add('hidden');
+    return;
+  }
+
+  const seatIndex = pendingSeatIndexToSteal;
+  const roomRef = ref(db, `rooms/${state.roomCode}`);
+  const roomSnap = await get(roomRef);
+  const roomData = roomSnap.val() || {};
+
+  const tRef = ref(db, `rooms/${state.roomCode}/tables/${seatIndex}`);
+  await set(tRef, { playerId: state.userId, playerName: state.userName || '名無し' });
+
+  if (roomData.hostId && pendingSeatPlayerIdToSteal && roomData.hostId === pendingSeatPlayerIdToSteal) {
+    await update(roomRef, { hostId: state.userId });
+  }
+
+  state.seatedTable = seatIndex;
+
+  kickDialog.classList.add('hidden');
+  pendingSeatIndexToSteal = null;
+  pendingSeatPlayerIdToSteal = null;
+
+  seatPop.classList.add('hidden');
+});
+
+/* =========================================================
+   ★ 自分の手札ドラッグ（配布者のみ）
+   ========================================================= */
+let drag = null;
+
+function removeDropHighlights(){
+  document.querySelectorAll('.other-area').forEach(el=>{
+    el.classList.remove('drop-active');
+  });
+}
+function getDropTargetByPoint(x, y){
+  const areas = Array.from(document.querySelectorAll('.other-area'));
+  for (const a of areas){
+    const r = a.getBoundingClientRect();
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom){
+      return a;
+    }
+  }
+  return null;
+}
+
+/* ★ ドラッグ中だけサークルを見せるためのスイッチ */
+function setDraggingUI(on){
+  document.body.classList.toggle('dragging', !!on);
+}
+
+function startDrag(role, pointerEvent){
+  if (!canTransferNow()) return;
+
+  const g = document.createElement('div');
+  g.className = 'drag-ghost';
+
+  /* ★ 正体カード名タグ削除：ghostも画像のみ */
+  g.innerHTML = `<img src="${role.img}" alt="${role.name}">`;
+
+  document.body.appendChild(g);
+
+  drag = { role, ghost: g, pointerId: pointerEvent.pointerId };
+
+  g.style.left = pointerEvent.clientX + 'px';
+  g.style.top  = pointerEvent.clientY + 'px';
+  g.style.transform = 'translate(-50%,-50%)';
+
+  setDraggingUI(true);
+
+  window.addEventListener('pointermove', onDragMove, { passive:false });
+  window.addEventListener('pointerup', onDragEnd, { passive:false });
+}
+
+function onDragMove(e){
+  if (!drag) return;
+  e.preventDefault();
+
+  drag.ghost.style.left = e.clientX + 'px';
+  drag.ghost.style.top  = e.clientY + 'px';
+
+  removeDropHighlights();
+  const target = getDropTargetByPoint(e.clientX, e.clientY);
+  if (!target) return;
+
+  const pid = target.getAttribute('data-player-id');
+  if (canDropTo(pid)) target.classList.add('drop-active');
+}
+
+async function onDragEnd(e){
+  if (!drag) return;
+  e.preventDefault();
+
+  const role = drag.role;
+  const ghost = drag.ghost;
+
+  removeDropHighlights();
+
+  const target = getDropTargetByPoint(e.clientX, e.clientY);
+  const dropToPlayerId = target ? target.getAttribute('data-player-id') : null;
+
+  ghost.remove();
+  drag = null;
+
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragEnd);
+
+  setDraggingUI(false);
+
+  if (!canTransferNow()) return;
+  if (!dropToPlayerId) return;
+  if (!canDropTo(dropToPlayerId)) return;
+
+  await transferCardToPlayer(role, dropToPlayerId);
+}
+
+/* =========================================================
+   ★ スタート：正体カードを「ランダムで1人だけ」に全配布
+   ========================================================= */
+function chooseRandomPlayerId(players){
+  if (!players.length) return null;
+  return players[Math.floor(Math.random()*players.length)].id;
+}
+
+async function dealIdentityToOnePlayer(){
+  if (!state.roomCode) return;
+
+  const tablesSnap = await get(ref(db, `rooms/${state.roomCode}/tables`));
+  const tables = tablesSnap.val() || {};
+  const players = Object.values(tables)
+    .filter(t => t && t.playerId)
+    .map(t => ({ id: t.playerId, name: t.playerName || '名無し' }));
+
+  const maxPlayers = Number(state.room.maxPlayers || 0);
+  const roleSet = ROLE_SETS[maxPlayers] || [];
+  if (!players.length || !roleSet.length) return;
+
+  const dealerId = chooseRandomPlayerId(players);
+
+  const hands = {};
+  players.forEach(p => hands[p.id] = { cards: [] });
+  hands[dealerId].cards = roleSet.map(r => ({...r}));
+
+  const points = {};
+  players.forEach(p => { points[p.id] = 3; });
+
+  const base = `rooms/${state.roomCode}`;
+  const patch = {};
+  patch[`${base}/hands`] = hands;
+  patch[`${base}/dealerId`] = dealerId;
+
+  patch[`${base}/points`] = points;
+
+  patch[`${base}/sleep`] = null;
+  patch[`${base}/confirm`] = null;
+  patch[`${base}/wolfChoice`] = null;
+  patch[`${base}/wolfResult`] = null;
+  patch[`${base}/roundCycle`] = null;
+
+  await update(ref(db), patch);
+
+  prevHandsSnapshot = structuredClone(hands);
+
+  wolfAnimHandledChosenId = null;
+  clearWolfOverlay();
+  playerCircle.classList.remove('wolf-reveal');
+}
+
+hostSettingsBtn.addEventListener('click', () => {
+  if (!state.isHost) return;
+  startPop.classList.toggle('hidden');
+});
+
+btnGameStart.addEventListener('click', async () => {
+  if (!state.isHost) return;
+  await dealIdentityToOnePlayer();
+  startPop.classList.add('hidden');
+});
+
+btnResetRoom.addEventListener('click', async () => {
+  if (!state.isHost || !state.roomCode) return;
+
+  const base = `rooms/${state.roomCode}`;
+  await Promise.all([
+    remove(ref(db, `${base}/maxPlayers`)),
+    remove(ref(db, `${base}/tables`)),
+    remove(ref(db, `${base}/hands`)),
+    remove(ref(db, `${base}/dealerId`)),
+    remove(ref(db, `${base}/points`)),
+    remove(ref(db, `${base}/sleep`)),
+    remove(ref(db, `${base}/confirm`)),
+    remove(ref(db, `${base}/wolfChoice`)),
+    remove(ref(db, `${base}/wolfResult`)),
+    remove(ref(db, `${base}/roundCycle`)),
+  ]);
+
+  state.seatedTable = null;
+  startPop.classList.add('hidden');
+  await syncSeatUI();
+
+  wolfAnimHandledChosenId = null;
+  clearWolfOverlay();
+  playerCircle.classList.remove('wolf-reveal');
+});
+</script>
+
+</body>
+</html>
