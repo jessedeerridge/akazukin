@@ -407,10 +407,22 @@
     border-radius:14px;
     overflow:hidden;
     box-shadow:0 18px 40px rgba(0,0,0,.25);
-    animation:scoreStopShake .6s ease-in-out infinite;
+    animation:scoreStopZoom 2s ease-out forwards;
+    animation-delay: var(--score-stop-delay, 0s);
     background:#fff;
+    transform-origin:center;
+  }
+  .score-stop-card-inner{
+    width:100%;
+    height:100%;
+    animation:scoreStopShake .6s ease-in-out infinite;
+    animation-delay: calc(2s + var(--score-stop-delay, 0s));
   }
   .score-stop-card img{width:100%;height:100%;object-fit:cover;display:block;}
+  @keyframes scoreStopZoom{
+    0%{transform:scale(0.6);}
+    100%{transform:scale(1);}
+  }
   @keyframes scoreStopShake{
     0%{transform:translateY(0) rotate(0deg);}
     25%{transform:translateY(-2px) rotate(-2deg);}
@@ -1607,6 +1619,11 @@ function clearWolfOverlay(){
   }
 }
 
+function getScoreStopPlayerIds(){
+  const playerIds = state.room?.roundCycle?.scoreStop?.playerIds || [];
+  return Array.isArray(playerIds) ? playerIds : Object.keys(playerIds || {});
+}
+
 function getIdentityCardForPlayerId(pid){
   const cards = state.hands?.[pid]?.cards || [];
   if (!Array.isArray(cards) || !cards.length) return null;
@@ -1615,8 +1632,7 @@ function getIdentityCardForPlayerId(pid){
 
 function renderScoreStopOverlay(){
   if (!scoreStopOverlay) return;
-  const playerIds = state.room?.roundCycle?.scoreStop?.playerIds || [];
-  const ids = Array.isArray(playerIds) ? playerIds : Object.keys(playerIds || {});
+  const ids = getScoreStopPlayerIds();
 
   if (!ids.length){
     scoreStopOverlay.classList.add('hidden');
@@ -1632,8 +1648,8 @@ function renderScoreStopOverlay(){
     if (!card) return;
     const el = document.createElement('div');
     el.className = 'score-stop-card';
-    el.style.animationDelay = `${index * 0.08}s`;
-    el.innerHTML = `<img src="${card.img}" alt="${card.name || 'identity'}">`;
+    el.style.setProperty('--score-stop-delay', `${index * 0.08}s`);
+    el.innerHTML = `<div class="score-stop-card-inner"><img src="${card.img}" alt="${card.name || 'identity'}"></div>`;
     scoreStopOverlay.appendChild(el);
   });
 
@@ -1674,6 +1690,8 @@ function computeUniformScaleToMatch(rect){
 async function runWolfPickAnimationIfNeeded(){
   const chosenId = state.room?.wolfChoice?.chosenId;
   if (!chosenId) return;
+
+  if (getScoreStopPlayerIds().length) return;
 
   if (wolfAnimHandledChosenId === chosenId) return;
 
